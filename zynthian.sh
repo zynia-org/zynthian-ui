@@ -31,7 +31,17 @@
 #------------------------------------------------------------------------------
 
 function load_config_env() {
+        echo "11111111111111111111111111111111111111111111111111111111111111111"
+        echo $PATH
+        echo "22222222222222222222222222222222222222222222222222222222222222222"
+
 	source "$ZYNTHIAN_SYS_DIR/scripts/zynthian_envars_extended.sh"
+
+        echo "33333333333333333333333333333333333333333333333333333333333333333"
+        echo $(whoami)
+        echo $(pwd)
+        echo $PATH
+        echo "44444444444444444444444444444444444444444444444444444444444444444"
 
 	if [ -z "$ZYNTHIAN_SCRIPT_MIDI_PROFILE" ]; then
 		source "$ZYNTHIAN_MY_DATA_DIR/midi-profiles/default.sh"
@@ -186,8 +196,14 @@ while true; do
 
 	# Start Zynthian GUI & Synth Engine
 	cd $ZYNTHIAN_UI_DIR
+        echo "555555555555555555555555555555555555555555555555555555555555555"
+        echo $PATH
+        echo "---------------------------------------"
+        echo $PS1
+        echo "6666666666666666666666666666666666666666666666666666666666666666"
 	./zynthian_main.py
 	status=$?
+        echo "$status  7777777777777777777777777777777777777777777777777777777777777777"
 
 	# Proccess output status
 	case $status in

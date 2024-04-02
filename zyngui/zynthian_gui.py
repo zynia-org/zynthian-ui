@@ -198,7 +198,7 @@ class zynthian_gui:
 		# Initialize SOC sensors monitoring
 		try:
 			self.hwmon_thermal_file = open('/sys/class/hwmon/hwmon0/temp1_input')
-			self.hwmon_undervolt_file = open('/sys/class/hwmon/hwmon1/in0_lcrit_alarm')
+			self.hwmon_undervolt_file = None  #open('/sys/class/hwmon/hwmon1/in0_lcrit_alarm')
 			self.overtemp_warning = 75.0
 			self.get_throttled_file = None
 		except:
@@ -2428,7 +2428,7 @@ class zynthian_gui:
 				self.status_info['overtemp'] = False
 				self.status_info['undervoltage'] = False
 
-				if self.hwmon_thermal_file and self.hwmon_undervolt_file:
+				if self.hwmon_thermal_file:    #and self.hwmon_undervolt_file:
 					try:
 						self.hwmon_thermal_file.seek(0)
 						res = int(self.hwmon_thermal_file.read())/1000
@@ -2438,13 +2438,13 @@ class zynthian_gui:
 					except Exception as e:
 						logging.error(e)
 
-					try:
-						self.hwmon_undervolt_file.seek(0)
-						res = self.hwmon_undervolt_file.read()
-						if res == "1":
-							self.status_info['undervoltage'] = True
-					except Exception as e:
-						logging.error(e)
+					#try:
+					#	self.hwmon_undervolt_file.seek(0)
+					#	res = self.hwmon_undervolt_file.read()
+					#	if res == "1":
+					#		self.status_info['undervoltage'] = True
+					#except Exception as e:
+					#	logging.error(e)
 
 				elif self.get_throttled_file:
 					try:

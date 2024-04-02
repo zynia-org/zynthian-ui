@@ -1,4 +1,4 @@
-#!/usr/bin/python3
+#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 #******************************************************************************
 # ZYNTHIAN PROJECT: Zynthian GUI
@@ -666,7 +666,7 @@ if "zynthian_main.py" in sys.argv[0]:
 		fh2 = int(fh * fw2 / fw)
 		nframes = 0
 		while pil_frame:
-			pil_frame2 = pil_frame.resize((fw2, fh2), Image.ANTIALIAS)
+			pil_frame2 = pil_frame.resize((fw2, fh2), Image.NEAREST)
 			# convert PIL image object to Tkinter PhotoImage object
 			loading_imgs.append(ImageTk.PhotoImage(pil_frame2))
 			nframes += 1

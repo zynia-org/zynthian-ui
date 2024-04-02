@@ -1,0 +1,10 @@
+PATH=/usr/local/bin:/zynthian/zynthian-sys/sbin:/bin:/usr/bin:/sbin:/usr/sbin
+FRAMEBUFFER=/dev/fb1
+HOME=/root
+ZYNTHIAN_LOG_LEVEL=10
+ZYNTHIAN_DIR=/zynthian
+ZYNTHIAN_UI_DIR=/zynthian/zynthian-ui
+ZYNTHIAN_SYS_DIR=/zynthian/zynthian-sys
+ZYNTHIAN_CONFIG_DIR=/zynthian/config
+cd /zynthian/zynthian-ui
+/usr/bin/startx ./zynthian.sh -- -r

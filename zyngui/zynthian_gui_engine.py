@@ -1,4 +1,4 @@
-#!/usr/bin/python3
+#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 #******************************************************************************
 # ZYNTHIAN PROJECT: Zynthian GUI
@@ -71,13 +71,13 @@ class zynthian_gui_engine(zynthian_gui_selector):
 			['SX', ("SysEx", "SysEx Manager", "Special", None, zynthian_engine_sysex, True)]
 		])
 
-		pt_info = get_pianoteq_binary_info()
+		pt_info = False   # get_pianoteq_binary_info()
 		if pt_info:
 			if pt_info['api']:
 				cls.engine_info['PT'] = ('Pianoteq', pt_info['name'], "MIDI Synth", None, zynthian_engine_pianoteq, True)
 			else:
 				cls.engine_info['PT'] = ('Pianoteq', pt_info['name'], "MIDI Synth", None, zynthian_engine_pianoteq6, True)
-		
+
 		for plugin_name, plugin_info in get_jalv_plugins().items():
 			eng = 'JV/{}'.format(plugin_name)
 			cls.engine_info[eng] = (plugin_name, plugin_name, plugin_info['TYPE'], plugin_info.get('CLASS', None), zynthian_engine_jalv, plugin_info['ENABLED'])
