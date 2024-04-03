@@ -3,6 +3,7 @@
 #include "event.h"
 #include <vector>
 #include <cstdint>
+#include <stdlib.h>  // needed for gcc 12+
 
 class Track
 {

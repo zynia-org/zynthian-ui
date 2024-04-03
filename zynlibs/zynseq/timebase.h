@@ -18,7 +18,7 @@
 */
 
 #pragma once
-
+#include <stdlib.h>  // needed for gcc 12+
 #include "constants.h"
 #include <cstdint> //provides uint data types
 #include <vector>
