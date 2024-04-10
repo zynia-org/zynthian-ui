@@ -1,4 +1,4 @@
-#!/usr/bin/python3
+#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 # ******************************************************************************
 # ZYNTHIAN PROJECT: Zynthian GUI
@@ -32,8 +32,8 @@ from random import randrange
 from zyngine import *
 from zyngine import zynthian_lv2
 from zyngine.zynthian_engine_jalv import *
-from zyngine.zynthian_engine_pianoteq import *
-from zyngine.zynthian_engine_pianoteq6 import *
+#from zyngine.zynthian_engine_pianoteq import *
+#from zyngine.zynthian_engine_pianoteq6 import *
 from zyngui import zynthian_gui_config
 from zyngui.zynthian_gui_selector import zynthian_gui_selector
 from zyngui.zynthian_gui_controller import zynthian_gui_controller
