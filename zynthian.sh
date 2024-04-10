@@ -189,7 +189,7 @@ fi
 # Run Zynthian-UI
 #------------------------------------------------------------------------------
 
-splash_zynthian
+#splash_zynthian
 load_config_env
 
 while true; do
@@ -199,7 +199,7 @@ while true; do
         echo "555555555555555555555555555555555555555555555555555555555555555"
         echo $PATH
         echo "---------------------------------------"
-        echo $PS1
+        echo $JACKD_OPTIONS
         echo "6666666666666666666666666666666666666666666666666666666666666666"
 	./zynthian_main.py
 	status=$?

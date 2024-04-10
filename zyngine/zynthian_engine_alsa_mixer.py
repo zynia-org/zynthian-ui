@@ -62,7 +62,8 @@ class zynthian_engine_alsa_mixer(zynthian_engine):
 		chan_trans = chan_names
 
 	translations_by_device = {
-		"sndrpihifiberry": {
+		# "sndrpihifiberry": {
+                 "StarfivePWMDACS": {
 			"Digital Left": "Output {} Level".format(chan_trans[0]),
 			"Digital Right": "Output {} Level".format(chan_trans[1]),
 			"ADC Left": "Input {} Level".format(chan_trans[0]),
