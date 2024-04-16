@@ -46,11 +46,6 @@ from zyngui.zynthian_gui_controller import zynthian_gui_controller
 class zynthian_gui_engine(zynthian_gui_selector):
 
 	def __init__(self):
-		self.reset_index = True
-		self.proc_type = None
-		self.cat_index = -1
-		self.zsel2 = None
-
 		# Custom layout for GUI engine
 		self.layout = {
 			'name': 'gui_engine',
@@ -63,15 +58,21 @@ class zynthian_gui_engine(zynthian_gui_selector):
 				(3, 1)
 			],
 			'list_pos': (0, 0),
-			'ctrl_orientation': zynthian_gui_config.layout['ctrl_orientation'],
+			'ctrl_orientation': 'horizontal',
 			'ctrl_order': (0, 1, 2, 3),
+			'ctrl_width': 0.3
 		}
-
-		super().__init__('Engine', True, False)
+		self.proc_type = None
+		self.zsel2 = None
+		self.cat_index = 0
+		self.engine_cats = None
 		self.context_index = {}
+		self.show_all = False
+		self.info_canvas = None
+		super().__init__('Engine', True, False)
+
 		self.engine_info = self.zyngui.chain_manager.engine_info
 		self.engine_info_dirty = False
-		self.show_all = False
 		self.xswipe_sens = 10
 
 		# Canvas for engine info
@@ -90,13 +91,14 @@ class zynthian_gui_engine(zynthian_gui_selector):
 		#self.cat_marker_marker = self.info_canvas.create_rectangle(0, 0, 0, 0, fill=zynthian_gui_config.color_on)
 
 		# Info layout
-		star_fs = int(self.width * 0.04)
+		ctrl_width = int(self.layout['ctrl_width'] * self.width)
+		star_fs = int(ctrl_width * 0.16)
 		#color_star = zynthian_gui_config.color_ml
 		color_star = zynthian_gui_config.color_on
 		color_star_off = zynthian_gui_config.color_off
 		xpos = int(0.1 * star_fs)
 		ypos = int(-0.3 * star_fs)
-		info_width = 0.25 * self.width - xpos
+		info_width = ctrl_width - xpos
 		"""
 		self.quality_label = self.info_canvas.create_text(
 			xpos,
@@ -160,6 +162,7 @@ class zynthian_gui_engine(zynthian_gui_selector):
 			font=(zynthian_gui_config.font_family, star_fs),
 			fill=color_star)
 		ypos += int(1.6 * star_fs)
+
 		self.description_label = self.info_canvas.create_text(
 			xpos,
 			ypos,
@@ -170,8 +173,27 @@ class zynthian_gui_engine(zynthian_gui_selector):
 			font=(zynthian_gui_config.font_family, int(0.8 * zynthian_gui_config.font_size)),
 			fill=zynthian_gui_config.color_panel_tx)
 
+		"""
+		self.description_label = tkinter.Text(self.main_frame,
+			width=info_width,
+			height=1,
+          	wrap=tkinter.CHAR,
+			font=(zynthian_gui_config.font_family, int(0.8 * zynthian_gui_config.font_size)),
+			fg=zynthian_gui_config.color_panel_tx,
+			bd=0,
+			highlightthickness=0,
+			bg=zynthian_gui_config.color_bg,
+			padx=2,
+			pady=2
+		)
+		self.description_label.grid(row=0, column=self.layout['list_pos'][1] + 1, rowspan=2, sticky="news")
+		"""
+
 	def update_layout(self):
 		super().update_layout()
+		if self.info_canvas:
+			self.info_canvas.configure(height=int(0.5 * self.height))
+			#self.description_label.configure(height=int(0.35 * self.height))
 
 	def update_info(self):
 		eng_code = self.list_data[self.index][0]
@@ -186,24 +208,32 @@ class zynthian_gui_engine(zynthian_gui_selector):
 		complexity_stars = "⚈" * eng_info["COMPLEX"]
 		self.info_canvas.itemconfigure(self.complexity_stars_label, text=complexity_stars)
 		self.info_canvas.itemconfigure(self.description_label, text=eng_info["DESCR"])
+		#self.description_label.delete("1.0", tkinter.END)
+		#self.description_label.insert("1.0", eng_info["DESCR"])
 
 	def get_engines_by_cat(self):
 		self.zyngui.chain_manager.get_engine_info()
+		self.engine_info = self.zyngui.chain_manager.engine_info
 		self.proc_type = self.zyngui.modify_chain_status["type"]
 		self.engines_by_cat = self.zyngui.chain_manager.filtered_engines_by_cat(self.proc_type, all=self.show_all)
-		self.engine_cats = sorted(self.engines_by_cat.keys())
+		self.engine_cats = list(self.engines_by_cat.keys())
 		logging.debug(f"CATEGORIES => {self.engine_cats}")
 		#self.engines_by_cat = sorted(self.engines_by_cat.items(), key=lambda kv: "!" if kv[0] is None else kv[0])
-		self.cat_index = 0
+
+	def recall_context_index(self):
+		try:
+			self.index = self.context_index[self.proc_type + "#" + str(self.cat_index)]
+		except:
+			self.index = 0
+			self.update_context_index()
+
+	def update_context_index(self):
+		self.context_index[self.proc_type + "#" + str(self.cat_index)] = self.index
 
 	def build_view(self):
 		self.show_all = False
-		try:
-			self.index = self.context_index[self.zyngui.modify_chain_status["type"]]
-		except:
-			self.index = 0
-			self.context_index[self.zyngui.modify_chain_status["type"]] = self.index
 		self.get_engines_by_cat()
+		self.recall_context_index()
 		return super().build_view()
 
 	def hide(self):
@@ -226,49 +256,58 @@ class zynthian_gui_engine(zynthian_gui_selector):
 			cats = [self.engine_cats[self.cat_index]]
 
 		for cat in cats:
-			# Add category header...
+			# Add category header when showing several cats...
 			if len(cats) > 1:
 				self.list_data.append((None, len(self.list_data), "> {}".format(cat)))
 
 			infos = self.engines_by_cat[cat]
-			# Add engines on this category...
-			if self.show_all:
-				for eng, info in sorted(infos.items()):
+
+			# Split engines in standalone & plugins
+			#standalone = []
+			#plugins = []
+			#for eng in infos:
+			#	if eng[0:2] == "JV":
+			#		plugins.append(eng)
+			#	else:
+			#		standalone.append(eng)
+
+			# Local function to add engines to the list
+			def add_engines(engines):
+				for eng in engines:
 					i = len(self.list_data)
-					if info["ENABLED"]:
-						self.list_data.append((eng, i, "\u2612 " + info["TITLE"], info["NAME"]))
+					info = infos[eng]
+					if self.show_all:
+						if info["ENABLED"]:
+							self.list_data.append((eng, i, "\u2612 " + info["TITLE"], info["NAME"]))
+						else:
+							self.list_data.append((eng, i, "\u2610 " + info["TITLE"], info["NAME"]))
 					else:
-						self.list_data.append((eng, i, "\u2610 " + info["TITLE"], info["NAME"]))
-			else:
-				for eng, info in sorted(infos.items()):
-					i = len(self.list_data)
-					self.list_data.append((eng, i, info["TITLE"], info["NAME"]))
+						self.list_data.append((eng, i, info["TITLE"], info["NAME"]))
+
+			#if len(standalone) > 0:
+			#	self.list_data.append((None, None, "> Standalone"))
+			#	add_engines(standalone)
+			#	if len(plugins) > 0:
+			#		self.list_data.append((None, None, "> Plugins"))
+			#add_engines(plugins)
+
+			add_engines(infos)
 
 		# Display help if no engines are enabled ...
 		if len(self.list_data) == 0:
 			self.list_data.append((None, len(self.list_data), "Bold-push to enable some engines".format(os.uname().nodename)))
 			self.index = 0
-
-		if self.reset_index:
-			self.index = 0
-			self.reset_index = False
+			self.update_context_index()
 
 		if not self.show_all:
 			self.engine_info_dirty = False
 
-		#self.update_marker()
 		super().fill_list()
-
-	def update_marker(self):
-		w = int(0.25 * self.width / len(self.engine_cats))
-		x = w * self.cat_index
-		self.info_canvas.coords(self.cat_marker_marker, x, 0, x + w, 6)
-		self.info_canvas.tag_raise(self.cat_marker_greyline)
-		self.info_canvas.tag_raise(self.cat_marker_marker)
 
 	def select(self, index=None):
 		super().select(index)
 		self.update_info()
+		self.update_context_index()
 
 	def select_action(self, i, t='S'):
 		if t == 'S':
@@ -342,7 +381,7 @@ class zynthian_gui_engine(zynthian_gui_selector):
 			self.zsel2.show()
 		else:
 			zsel2_ctrl = zynthian_controller(None, "cat_index", {'name': "Category", 'short_name': "Category", 'value_min': 0, 'value_max': len(self.engine_cats) - 1, 'value': self.cat_index})
-			self.zsel2 = zynthian_gui_controller(zynthian_gui_config.select_ctrl - 1, self.main_frame, zsel2_ctrl, zs_hidden, selcounter=True)
+			self.zsel2 = zynthian_gui_controller(zynthian_gui_config.select_ctrl - 1, self.main_frame, zsel2_ctrl, zs_hidden, selcounter=True, orientation=self.layout['ctrl_orientation'])
 		if not self.zselector_hidden:
 			self.zsel2.grid(row=self.layout['ctrl_pos'][2][0], column=self.layout['ctrl_pos'][2][1], sticky="news", pady=(0, 1))
 
@@ -352,6 +391,12 @@ class zynthian_gui_engine(zynthian_gui_selector):
 			self.zsel2.calculate_plot_values()
 		self.zsel2.plot_value()
 
+	def set_cat(self, cat_index):
+		self.cat_index = cat_index
+		self.recall_context_index()
+		self.update_list()
+		self.set_select_path()
+
 	def zynpot_cb(self, i, dval):
 		if not self.shown:
 			return False
@@ -359,9 +404,7 @@ class zynthian_gui_engine(zynthian_gui_selector):
 		if self.zsel2 and self.zsel2.index == i:
 			self.zsel2.zynpot_cb(dval)
 			if self.cat_index != self.zsel2.zctrl.value:
-				self.cat_index = self.zsel2.zctrl.value
-				self.update_list()
-				self.set_select_path()
+				self.set_cat(self.zsel2.zctrl.value)
 			return True
 		else:
 			return super().zynpot_cb(i, dval)
@@ -375,19 +418,17 @@ class zynthian_gui_engine(zynthian_gui_selector):
 			self.listbox_x0 = event.x
 			cat_index = self.cat_index + offset_x
 			if 0 <= cat_index < len(self.engine_cats):
-				self.cat_index = cat_index
-				self.update_list()
-				self.set_select_path()
+				self.set_cat(cat_index)
 
 	def set_select_path(self):
 		path = ""
 		try:
 			path = self.zyngui.modify_chain_status["type"]
-			chain = self.zyngui.chain_manager.chains[self.zyngui.modify_chain_status["chain_id"]].get_name()
-			path = f"{chain}#{path}"
+			#chain = self.zyngui.chain_manager.chains[self.zyngui.modify_chain_status["chain_id"]].get_name()
+			#path = f"{chain}#{path}"
 		except:
 			pass
-		if self.cat_index >= 0:
+		if self.engine_cats:
 			path = path + "/" + self.engine_cats[self.cat_index]
 		self.select_path.set(path)
 

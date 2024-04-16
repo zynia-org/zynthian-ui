@@ -61,38 +61,81 @@ lv2_plugin_classes = {
 }
 
 engine_categories = {
-	"MIDI Synth": ("Analog", "FM", "Modeler", "Soundfont", "Wavetable", "Other"),
-	"Audio Effect": ("Analyzer", "Delay", "Distortion", "Dynamics", "EQ", "Filter", "Looper",
-					"Modulation", "Panning", "Pitch", "Reverb", "Simulator", "Other"),
-	"MIDI Tool": ("Arpeggiator", "Automation", "Chorder", "Filter", "Mapper", "Sequencer", "Other"),
-	"Audio Generator": ("Generator", "Oscillator", "Other"),
-	"Special": ("Language", "Patchbay", "Sampler", "Other")
+	"MIDI Synth": (
+		"Acoustic",
+		"Organ",
+		"Piano",
+		"Percussion",
+		"Sampler",
+		"Synth",
+		"Other"
+	),
+	"Audio Effect": (
+		"Amplifier",
+		"Analyzer",
+		"Delay",
+		"Distortion",
+		"Dynamics",
+		"Filter & EQ",
+		"Modulation",
+		"Panning & Spatial",
+		"Pitch",
+		"Reverb",
+		"Other"
+	),
+	"MIDI Tool": (
+		"Arpeggiator",
+		"Automation",
+		"Filter",
+		"Mapper",
+		"Sequencer",
+		"Other"
+	),
+	"Audio Generator": (
+		"Generator",
+		"Oscillator",
+		"Other"
+	),
+	"Special": (
+		"Language",
+		"Patchbay",
+		"Sampler",
+		"Other"
+	)
 }
 
 lv2class2engcat = {
-	"Instrument": "Analog",
+	"Analogue": "Synth",
+	"Sampler & Wavetable": "Synth",
+	"Hybrid": "Synth",
+	"Emulator": "Synth",
+	"Soundfont": "Sampler",
+	"Instrument": "Synth",
 	"Analyser": "Analyzer",
 	"Spectral": "Filter",
 	"Delay": "Delay",
+	"Looper": "Delay",
 	"Compressor": "Dynamics",
 	"Distortion": "Distortion",
-	"Filter": "Modulation",
-	"Equaliser": "EQ",
+	"Filter": "Filter & EQ",
+	"EQ": "Filter & EQ",
+	"Equaliser": "Filter & EQ",
 	"Modulator": "Modulation",
 	"Expander": "Dynamics",
-	"Spatial": "Panning",
+	"Spatial": "Panning & Spatial",
+	"Panning": "Panning & Spatial",
 	"Limiter": "Dynamics",
 	"Pitch Shifter": "Pitch",
 	"Reverb": "Reverb",
-	"Simulator": "Simulator",
+	"Simulator": "Amplifier",
 	"Envelope": "Modulation",
 	"Gate": "Dynamics",
-	"Amplifier": "Simulator",
+	"Amplifier": "Amplifier",
 	"Chorus": "Modulation",
 	"Flanger": "Modulation",
 	"Phaser": "Modulation",
-	"Highpass": "Filter",
-	"Lowpass": "Filter",
+	"Highpass": "Filter & EQ",
+	"Lowpass": "Filter & EQ",
 	"Dynamics": "Dynamics",
 	"Oscillator": "Oscillator",
 	"Generator": "Generator",
@@ -102,20 +145,21 @@ lv2class2engcat = {
 
 
 standalone_engine_info = {
-	"SL": ["SooperLooper", "SooperLooper", "Audio Effect", "Looper", True],
-	"ZY": ["ZynAddSubFX", "ZynAddSubFX", "MIDI Synth", "Analog", True],
-	"FS": ["FluidSynth", "FluidSynth: SF2, SF3", "MIDI Synth", "Soundfont", True],
-	"SF": ["Sfizz", "Sfizz: SFZ", "MIDI Synth", "Soundfont", True],
-	"LS": ["LinuxSampler", "LinuxSampler: SFZ, GIG", "MIDI Synth", "Soundfont", True],
-	"BF": ["setBfree", "setBfree - Hammond Emulator", "MIDI Synth", "Modeler", True],
-	"AE": ["Aeolus", "Aeolus - Pipe Organ Emulator", "MIDI Synth", "Modeler", True],
-	"PT": ['Pianoteq', "Pianoteq", "MIDI Synth", "Modeler", True],
+	"SL": ["SooperLooper", "SooperLooper", "Audio Effect", "Delay", True],
+	"ZY": ["ZynAddSubFX", "ZynAddSubFX", "MIDI Synth", "Synth", True],
+	"FS": ["FluidSynth", "FluidSynth: SF2, SF3", "MIDI Synth", "Sampler", True],
+	"SF": ["Sfizz", "Sfizz: SFZ", "MIDI Synth", "Sampler", True],
+	"LS": ["LinuxSampler", "LinuxSampler: SFZ, GIG", "MIDI Synth", "Sampler", True],
+	"BF": ["setBfree", "setBfree - Hammond Emulator", "MIDI Synth", "Organ", True],
+	"AE": ["Aeolus", "Aeolus - Pipe Organ Emulator", "MIDI Synth", "Organ", True],
+	"PT": ['Pianoteq', "Pianoteq", "MIDI Synth", "Piano", True],
 	"AP": ["AudioPlayer", "Audio File Player", "Special", "Sampler", True],
 	'PD': ["PureData", "PureData - Visual Programming", "Special", "Language", True],
 	'MD': ["MOD-UI", "MOD-UI - Plugin Host", "Special", "Language", True],
 	'IR': ["InternetRadio", "Internet Radio", "Audio Generator", "Other", True]
 }
 
+ENGINE_DEFAULT_CONFIG_FILE = "{}/config/engine_config.json".format(os.environ.get('ZYNTHIAN_SYS_DIR'))
 ENGINE_CONFIG_FILE = "{}/engine_config.json".format(os.environ.get('ZYNTHIAN_CONFIG_DIR'))
 JALV_LV2_CONFIG_FILE = "{}/jalv/plugins.json".format(os.environ.get('ZYNTHIAN_CONFIG_DIR'))
 
@@ -171,7 +215,7 @@ def load_engines():
 		engines_mtime = os.stat(fpath).st_mtime
 		logging.debug(f'Loaded engine config with timestamp: {engines_mtime}')
 	except Exception as e:
-		logging.debug('Loading engine config failed: {}'.format(e))
+		logging.error('Loading engine config failed: {}'.format(e))
 
 	# Regenerate config file if it doesn't exist or is an older version
 	if not os.path.exists(ENGINE_CONFIG_FILE) or 'AE' in engines and "ID" not in engines['AE']:
@@ -203,8 +247,50 @@ def save_engines():
 		with open(ENGINE_CONFIG_FILE, 'w') as f:
 			json.dump(sengines, f)
 		engines_mtime = os.stat(ENGINE_CONFIG_FILE).st_mtime
+		logging.info(f"Saved engine config file with timestamp {engines_mtime}")
 	except Exception as e:
-		logging.error('Saving engine config file failed: {}'.format(e))
+		logging.error(f"Saving engine config file failed: {e}")
+
+
+def update_engine_defaults(refresh=True):
+	global engines
+
+	default_engines = {}
+	fpath = ENGINE_DEFAULT_CONFIG_FILE
+	try:
+		with open(fpath) as f:
+			default_engines = json.load(f)
+		mtime = os.stat(fpath).st_mtime
+		logging.debug(f'Loaded default engine config with timestamp: {mtime}')
+	except Exception as e:
+		logging.error('Loading default engine config failed: {}'.format(e))
+
+	current_engines = {}
+	fpath = ENGINE_CONFIG_FILE
+	try:
+		with open(fpath) as f:
+			current_engines = json.load(f)
+		mtime = os.stat(fpath).st_mtime
+		logging.debug(f'Loaded current engine config with timestamp: {mtime}')
+	except Exception as e:
+		logging.error('Loading current engine config failed: {}'.format(e))
+
+	# Merge default and current engine DBs
+	if default_engines and current_engines:
+		for key, info in default_engines.items():
+			info['EDIT'] = 0
+			try:
+				if current_engines[key]['EDIT'] == 1:
+					info['ENABLED'] = current_engines[key]['ENABLED']
+					info['EDIT'] = 1
+				elif current_engines[key]['EDIT'] >= 2:
+					continue
+			except:
+				pass
+			current_engines[key] = info
+
+		engines = current_engines
+		generate_engines_config_file(refresh=refresh)
 
 
 def is_engine_enabled(key, default=False):
@@ -240,31 +326,44 @@ def generate_engines_config_file(refresh=True, reset_rankings=None):
 		# Add standalone engines
 		i = 0
 		for key, engine_info in standalone_engine_info.items():
+			engine_name = engine_info[0]
+			engine_type = engine_info[2]
 			try:
 				engine_id = engines[key]['ID']
+				engine_title = engines[key]['TITLE']
 				engine_cat = engines[key]['CAT']
+				if engine_cat not in engine_categories[engine_type]:
+					engine_cat = engine_info[3]
 				engine_index = engines[key]['INDEX']
 				engine_descr = engines[key]['DESCR']
 				engine_quality = engines[key]['QUALITY']
 				engine_complex = engines[key]['COMPLEX']
+				try:
+					engine_edit = engines[key]['EDIT']
+				except:
+					engine_edit = 0
 			except:
 				hash.update(key.encode())
 				engine_id = hash.hexdigest()[:10]
+				engine_title = engine_info[1]
 				engine_cat = engine_info[3]
 				engine_index = i
 				engine_descr = get_engine_description(key)
 				engine_quality = 0
 				engine_complex = 0
+				engine_edit = 0
+
 			if reset_rankings == 1:
 				engine_quality = engine_complex = 0
 			elif reset_rankings == 2:
 				engine_quality = randrange(5)
 				engine_complex = randrange(5)
+
 			genengines[key] = {
 				'ID': engine_id,
-				'NAME': engine_info[0],
-				'TITLE': engine_info[1],
-				'TYPE': engine_info[2],
+				'NAME': engine_name,
+				'TITLE': engine_title,
+				'TYPE': engine_type,
 				'CAT': engine_cat,
 				'ENABLED': is_engine_enabled(key, True),
 				'INDEX': engine_index,
@@ -272,43 +371,56 @@ def generate_engines_config_file(refresh=True, reset_rankings=None):
 				'UI': "",
 				'DESCR': engine_descr,
 				"QUALITY": engine_quality,
-				"COMPLEX": engine_complex
+				"COMPLEX": engine_complex,
+				"EDIT": engine_edit
 			}
 			logging.debug("Standalone Engine '{}' => {}".format(key, genengines[key]))
 			i += 1
 
 		# Add LV2 plugins
 		for plugin in world.get_all_plugins():
-			name = str(plugin.get_name())
-			key = f"JV/{name}"
+			engine_name = str(plugin.get_name())
+			key = f"JV/{engine_name}"
 			try:
 				engine_id = engines[key]['ID']
+				engine_title = engines[key]['TITLE']
 				engine_type = engines[key]['TYPE']
 				engine_cat = engines[key]['CAT']
 				if engine_cat not in engine_categories[engine_type]:
-					engine_cat = get_plugin_cat(plugin)
+					try:
+						engine_cat = lv2class2engcat[engine_cat]
+					except:
+						engine_cat = get_plugin_cat(plugin)
 				engine_index = engines[key]['INDEX']
 				engine_descr = engines[key]['DESCR']
 				engine_quality = engines[key]['QUALITY']
 				engine_complex = engines[key]['COMPLEX']
+				try:
+					engine_edit = engines[key]['EDIT']
+				except:
+					engine_edit = 0
 			except:
 				hash.update(key.encode())
 				engine_id = hash.hexdigest()[:10]
+				engine_title = engine_name
 				engine_type = get_plugin_type(plugin).value
 				engine_cat = get_plugin_cat(plugin)
 				engine_index = 9999
 				engine_descr = get_engine_description(key)
 				engine_quality = 0
 				engine_complex = 0
+				engine_edit = 0
+
 			if reset_rankings == 1:
 				engine_quality = engine_complex = 0
 			elif reset_rankings == 2:
 				engine_quality = randrange(5)
 				engine_complex = randrange(5)
+
 			genengines[key] = {
 				'ID': engine_id,
-				'NAME': name,
-				'TITLE': name,
+				'NAME': engine_name,
+				'TITLE': engine_title,
 				'TYPE': engine_type,
 				'CAT': engine_cat,
 				'ENABLED': is_engine_enabled(key, False),
@@ -317,13 +429,13 @@ def generate_engines_config_file(refresh=True, reset_rankings=None):
 				'UI': is_plugin_ui(plugin),
 				'DESCR': engine_descr,
 				"QUALITY": engine_quality,
-				"COMPLEX": engine_complex
-				#'UI': plugin.get_uis()
-				# get_binary_uri()
+				"COMPLEX": engine_complex,
+				"EDIT": engine_edit
 			}
-			logging.debug("LV2 Plugin '{}' => {}".format(name, genengines[key]))
+			logging.debug("LV2 Plugin '{}' => {}".format(engine_name, genengines[key]))
 
-		engines = dict(sorted(genengines.items()))
+		# Sort using title, so user can customize order by changing title from webconf
+		engines = dict(sorted(genengines.items(), key=lambda r: r[1]['TITLE'].casefold()))
 
 		with open(ENGINE_CONFIG_FILE, 'w') as f:
 			json.dump(engines, f)
@@ -407,6 +519,7 @@ def get_plugin_type(plugin):
 
 	#return EngineType.UNKNOWN
 	return EngineType.AUDIO_EFFECT
+
 
 def get_plugin_cat(plugin):
 	plugin_class = str(plugin.get_class().get_label())
@@ -697,7 +810,13 @@ if __name__ == '__main__':
 	start = int(round(time.time()))
 	if len(sys.argv) > 1:
 		if sys.argv[1] == "engines":
-			generate_engines_config_file(False)
+			prev_engines = engines.keys()
+			#generate_engines_config_file(refresh=False)
+			update_engine_defaults(refresh=False)
+			# Detect new LV2 plugins and generate presets cache for them
+			for key, info in engines.items():
+				if key not in prev_engines and 'URL' in info and info['URL']:
+					generate_plugin_presets_cache(info['URL'], False)
 
 		elif sys.argv[1] == "presets":
 			generate_presets_cache_workaround()
@@ -715,11 +834,11 @@ if __name__ == '__main__':
 				pass
 
 		elif sys.argv[1] == "all":
-			generate_engines_config_file(False)
+			generate_engines_config_file(refresh=False)
 			generate_all_presets_cache(False)
 
 	else:
-		generate_engines_config_file(False)
+		generate_engines_config_file(refresh=False)
 		generate_all_presets_cache(False)
 
 	#get_plugin_ports("https://github.com/dcoredump/dexed.lv2")
