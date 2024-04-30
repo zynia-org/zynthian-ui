@@ -661,7 +661,7 @@ uint8_t save(AUDIO_PLAYER * pPlayer, const char* filename) {
         loopInfo.loop_mode = pPlayer->loop?SF_LOOP_FORWARD:SF_LOOP_NONE;
         loopInfo.root_key = pPlayer->base_note;
         //!@todo sf_command does not support SFC_SET_LOOP_INFO
-        sf_command(outfile, SFC_SET_LOOP_INFO, &loopInfo, sizeof(loopInfo));
+        //sf_command(outfile, SFC_SET_LOOP_INFO, &loopInfo, sizeof(loopInfo));
     }
 
     // loop points
