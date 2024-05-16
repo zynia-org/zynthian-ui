@@ -375,14 +375,14 @@ def get_wifi_list():
 
 def get_nwdev_all_status(devname):
 	status = {}
-	try:
-		rows = check_output(["nmcli", "--terse", "dev", "show", devname], encoding='utf-8').split("\n")
-		for row in rows:
-			parts = row.split(":", 2)
-			if len(parts) > 1:
-				status[parts[0]] = parts[1]
-	except Exception as e:
-		logging.error(f"Can't get status for '{devname}': {e}")
+#	try:
+#		rows = check_output(["nmcli", "--terse", "dev", "show", devname], encoding='utf-8').split("\n")
+#		for row in rows:
+#			parts = row.split(":", 2)
+#			if len(parts) > 1:
+#				status[parts[0]] = parts[1]
+#	except Exception as e:
+#		logging.error(f"Can't get status for '{devname}': {e}")
 	return status
 
 

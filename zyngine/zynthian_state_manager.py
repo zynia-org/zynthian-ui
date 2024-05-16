@@ -831,6 +831,7 @@ class zynthian_state_manager:
     # ---------------------------------------------------------------------------
 
     def power_save_check(self):
+        return
         if zynthian_gui_config.power_save_secs <= 0:
             return
         if self.last_event_flag:

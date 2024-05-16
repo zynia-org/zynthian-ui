@@ -1484,7 +1484,7 @@ class zynthian_gui:
 
 	# V5 knob click
 	def cuia_v5_zynpot_switch(self, params):
-		i = params[0]
+		i = int(params[0])
 		t = params[1].upper()
 
 		if self.current_screen in ("control", "alsa_mixer", "audio_player"):
