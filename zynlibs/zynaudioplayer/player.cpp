@@ -378,7 +378,7 @@ void* file_thread_fn(void * param) {
 
             while(pPlayer->file_read_status == LOADING)
             {
-                int nFramesRead;
+                int nFramesRead = 0;
                 // Load block of data from file to SRC or output buffer
                 nMaxFrames = pPlayer->input_buffer_size - nUnusedFrames;
 
@@ -1277,7 +1277,7 @@ int on_jack_process(jack_nframes_t nFrames, void * arg) {
             if(cue_point_play) {
                 uint8_t cue = pPlayer->last_note_played - 59;
                 //!@todo Handle cue play reverse
-                if(cue_point_play > cue && pPlayer->play_pos_frames > pPlayer->cue_points[cue].offset) {
+                if(cue_point_play > cue && pPlayer->play_pos_frames > pPlayer->cue_points[cue].offset || pPlayer->play_pos_frames > pPlayer->crop_end) {
                     pPlayer->play_pos_frames = pPlayer->cue_points[cue - 1].offset;
                     pPlayer->env_state = ENV_RELEASE; //!@todo This looks wrong
                     if(pPlayer->loop == 1)

@@ -87,6 +87,7 @@ from zyngui.zynthian_gui_brightness_config import zynthian_gui_brightness_config
 from zyngui.zynthian_gui_touchscreen_calibration import zynthian_gui_touchscreen_calibration
 from zyngui.zynthian_gui_cv_config import zynthian_gui_cv_config
 from zyngui.zynthian_gui_wifi import zynthian_gui_wifi
+from zyngui.zynthian_gui_bluetooth import zynthian_gui_bluetooth
 from zyngui.zynthian_gui_control_test import zynthian_gui_control_test
 
 MIXER_MAIN_CHANNEL = 17  # TODO This constant should go somewhere else
@@ -447,6 +448,7 @@ class zynthian_gui:
 		self.screens['arranger'] = zynthian_gui_arranger()
 		self.screens['pattern_editor'] = zynthian_gui_patterneditor()
 		self.screens['wifi'] = zynthian_gui_wifi()
+		self.screens['bluetooth'] = zynthian_gui_bluetooth()
 		self.screens['brightness_config'] = zynthian_gui_brightness_config()
 		self.screens['touchscreen_calibration'] = zynthian_gui_touchscreen_calibration()
 		self.screens['control_test'] = zynthian_gui_control_test()
@@ -1301,6 +1303,8 @@ class zynthian_gui:
 		if self.current_screen in ["arranger", "zynpad"]:
 			success = self.screens[self.current_screen].show_pattern_editor()
 		if not success:
+			success = self.screens['zynpad'].show_pattern_editor()
+		if not success:
 			self.show_screen("pattern_editor")
 
 	def cuia_screen_arranger(self, params=None):
@@ -1509,6 +1513,28 @@ class zynthian_gui:
 			if i == 2 and t == 'S':
 				self.zynswitch_short(i)
 				return
+		elif self.current_screen == "pattern_editor":
+			if i == 0:
+				if t == 'S' or t == 'B':
+					self.show_screen("arranger")
+					return
+			elif i == 1:
+				if t == 'S' or t == 'B':
+					self.screens["pattern_editor"].reset_grid_scale()
+					return
+			elif i == 2:
+				if t == 'S' or t == 'B':
+					self.zynswitch_bold(3)
+					return
+		elif self.current_screen == "arranger":
+			if i == 0:
+				if t == 'S' or t == 'B':
+					self.show_screen("pattern_editor")
+					return
+			elif i == 1:
+					return
+			elif i == 2:
+					return
 		if i == 3:
 			if t == 'S':
 				self.zynswitch_short(i)
@@ -1761,7 +1787,7 @@ class zynthian_gui:
 		
 		dtus : Duration switch has been pressed
 		Return : Letter indicating the action to take
-		#TODO: Does not support Release which means that press and hold expires when Long press is reached
+		# TODO: Does not support Release which means that press and hold expires when Long press is reached
 		"""
 		if dtus == 0:
 			return "P"
@@ -1778,11 +1804,9 @@ class zynthian_gui:
 		if self.capture_log_fname:
 			self.write_capture_log("ZYNSWITCH:P,{}".format(i))
 
-		try:
+		if callable(getattr(self.screens[self.current_screen], "switch", None)):
 			if self.screens[self.current_screen].switch(i, 'P'):
-				return
-		except AttributeError:
-			pass
+				return True
 
 		# Standard 4 ZynSwitches
 		if 0 <= i <= 3:
@@ -1801,16 +1825,20 @@ class zynthian_gui:
 		# Standard 4 ZynSwitches
 		if i == 0:
 			self.show_screen_reset("admin")
+			return True
 
 		elif i == 1:
 			self.cuia_all_sounds_off()
+			return True
 
 		elif i == 2:
 			self.cuia_screen_snapshot()
 			#self.show_screen_reset("zynpad")
+			return True
 
 		elif i == 3:
 			self.screens['admin'].power_off()
+			return True
 
 		# Custom ZynSwitches
 		elif i >= 4:
@@ -1822,15 +1850,14 @@ class zynthian_gui:
 		if self.capture_log_fname:
 			self.write_capture_log("ZYNSWITCH:B,{}".format(i))
 
-		try:
+		if callable(getattr(self.screens[self.current_screen], "switch", None)):
 			if self.screens[self.current_screen].switch(i, 'B'):
-				return
-		except AttributeError:
-			pass
+				return True
 
 		# Default actions for the 4 standard ZynSwitches
 		if i == 0:
 			self.show_screen('main_menu')
+			return True
 
 		elif i == 1:
 			try:
@@ -1838,13 +1865,16 @@ class zynthian_gui:
 			except:
 				pass
 			self.show_screen_reset('audio_mixer')
+			return True
 
 		elif i == 2:
 			self.cuia_screen_zs3()
 			#self.cuia_screen_snapshot()
+			return True
 
 		elif i == 3:
 			self.screens[self.current_screen].switch_select('B')
+			return True
 
 		# Custom ZynSwitches
 		elif i >= 4:
@@ -1856,24 +1886,26 @@ class zynthian_gui:
 		if self.capture_log_fname:
 			self.write_capture_log("ZYNSWITCH:S,{}".format(i))
 
-		try:
+		if callable(getattr(self.screens[self.current_screen], "switch", None)):
 			if self.screens[self.current_screen].switch(i, 'S'):
-				return
-		except AttributeError:
-			pass
+				return True
 
 		# Default actions for the standard 4 ZynSwitches
 		if i == 0:
 			self.cuia_menu()
+			return True
 
 		elif i == 1:
 			self.back_screen()
+			return True
 
 		elif i == 2:
 			self.cuia_toggle_midi_learn()
+			return True
 
 		elif i == 3:
 			self.screens[self.current_screen].switch_select('S')
+			return True
 
 		# Custom ZynSwitches
 		elif i >= 4:
@@ -1919,11 +1951,11 @@ class zynthian_gui:
 	# ------------------------------------------------------------------
 
 	def zynswitch_read(self):
-		#TODO: Block control when busy but avoid ui lock-up
+		# TODO: Block control when busy but avoid ui lock-up
 		#if self.state_manager.is_busy():
 		#	return
 
-		#Read Zynswitches
+		# Read Zynswitches
 		try:
 			self.zynswitches()
 		except Exception as err:
@@ -1982,18 +2014,20 @@ class zynthian_gui:
 		vel : Velocity value
 		"""
 
-		# Pattern recording
-		if self.current_screen == 'pattern_editor' and self.state_manager.zynseq.libseq.isMidiRecord():
-			self.screens['pattern_editor'].midi_note(note)
-		# Preload preset (note-on)
-		elif self.current_screen == 'preset' and zynthian_gui_config.preset_preload_noteon and \
-			(zynautoconnect.get_midi_in_dev_mode(izmip) or chan == self.get_current_processor().get_midi_chan()):
-			self.screens['preset'].preselect_action()
-		# Note Range Learn
-		elif self.current_screen == 'midi_key_range' and self.state_manager.midi_learn_state:
-			self.screens['midi_key_range'].learn_note_range(note)
-		# Channel activity
-		self.screens['midi_chan'].midi_chan_activity(chan)
+		# Handle external devices only
+		if izmip < self.state_manager.get_max_num_midi_devs():
+			# Pattern recording
+			if self.current_screen == 'pattern_editor' and self.state_manager.zynseq.libseq.isMidiRecord():
+				self.screens['pattern_editor'].midi_note(note)
+			# Preload preset (note-on)
+			elif self.current_screen == 'preset' and zynthian_gui_config.preset_preload_noteon and \
+				(zynautoconnect.get_midi_in_dev_mode(izmip) or chan == self.get_current_processor().get_midi_chan()):
+				self.screens['preset'].preselect_action()
+			# Note Range Learn
+			elif self.current_screen == 'midi_key_range' and self.state_manager.midi_learn_state:
+				self.screens['midi_key_range'].learn_note_range(note)
+			# Channel activity
+			self.screens['midi_chan'].midi_chan_activity(chan)
 
 	def cb_midi_note_off(self, izmip, chan, note, vel):
 		"""Handle MIDI_NOTE_OFF signal
@@ -2004,9 +2038,11 @@ class zynthian_gui:
 		vel : Velocity value
 		"""
 
-		# Pattern recording
-		if self.current_screen == 'pattern_editor' and self.state_manager.zynseq.libseq.isMidiRecord():
-			self.screens['pattern_editor'].midi_note(note)
+		# Handle external devices only
+		if izmip < self.state_manager.get_max_num_midi_devs():
+			# Pattern recording
+			if self.current_screen == 'pattern_editor' and self.state_manager.zynseq.libseq.isMidiRecord():
+				self.screens['pattern_editor'].midi_note(note)
 
 	# ------------------------------------------------------------------
 	# Zynpot Thread
@@ -2050,7 +2086,7 @@ class zynthian_gui:
 	def control_thread_task(self):
 		j = 0
 		while not self.exit_flag:
-			# Read zynswitches, MIDI & OSC events
+			# Read zynswitches & OSC events
 			self.zynswitch_read()
 			self.osc_receive()
 

@@ -8,22 +8,51 @@ Pattern::Pattern(uint32_t beats, uint32_t stepsPerBeat) :
     m_nStepsPerBeat(stepsPerBeat)
 {
     setStepsPerBeat(stepsPerBeat);
+    resetSnapshots();
 }
 
 Pattern::Pattern(Pattern* pattern) {
-    m_nBeats = pattern->getBeatsInPattern();
-    setStepsPerBeat(pattern->getStepsPerBeat());
-    uint32_t nIndex = 0;
-    while(StepEvent* pEvent = pattern->getEventAt(nIndex++))
-        addEvent(pEvent);
+	*this = *pattern;
 }
 
 Pattern::~Pattern()
 {
     clear();
+	for (StepEventVector* sev : m_vSnapshots) {
+		clearStepEventVector(sev);
+        delete(sev);
+    }
 }
 
-StepEvent* Pattern::addEvent(uint32_t position, uint8_t command, uint8_t value1, uint8_t value2, float duration)
+// copy assignment
+Pattern& Pattern::operator=(Pattern& p)
+{
+    // Guard self assignment
+    if (this == &p)
+    	return *this;
+	clear();
+    m_nBeats = p.getBeatsInPattern();
+    setStepsPerBeat(p.getStepsPerBeat());
+    m_nScale = p.m_nScale;
+    m_nTonic = p.m_nTonic;
+    m_nRefNote = p.m_nRefNote;
+	m_bQuantizeNotes = p.m_bQuantizeNotes;
+    m_nSwingDiv = p.m_nSwingDiv;
+    m_fSwingAmount = p.m_fSwingAmount;
+    m_fHumanTime = p.m_fHumanTime;
+    m_fHumanVelo = p.m_fHumanVelo;
+    m_fPlayChance = p.m_fPlayChance;
+	// Copy Events
+    uint32_t i = 0;
+    while (StepEvent* ev = p.getEventAt(i)) {
+        addEvent(ev);
+        i++;
+    }
+    resetSnapshots();
+    return *this;
+}
+
+StepEvent* Pattern::addEvent(uint32_t position, uint8_t command, uint8_t value1, uint8_t value2, float duration, float offset)
 {
     //Delete overlapping events
     uint8_t nStutterCount = 0;
@@ -57,7 +86,7 @@ StepEvent* Pattern::addEvent(uint32_t position, uint8_t command, uint8_t value1,
         if((*it)->getPosition() > position)
             break;
     }
-    auto itInserted = m_vEvents.insert(it, new StepEvent(position, command, value1, value2, duration));
+    auto itInserted = m_vEvents.insert(it, new StepEvent(position, command, value1, value2, duration, offset));
     (*itInserted)->setStutterCount(nStutterCount);
     (*itInserted)->setStutterDur(nStutterDur);
     return *itInserted;
@@ -65,12 +94,12 @@ StepEvent* Pattern::addEvent(uint32_t position, uint8_t command, uint8_t value1,
 
 StepEvent* Pattern::addEvent(StepEvent* pEvent)
 {
-    StepEvent* pNewEvent = addEvent(pEvent->getPosition(), pEvent->getCommand(), pEvent->getValue1start(), pEvent->getValue2start(), pEvent->getDuration());
-    pNewEvent->setValue1end(pEvent->getValue1end());
-    pNewEvent->setValue2end(pEvent->getValue2end());
-    pNewEvent->setStutterCount(pEvent->getStutterCount());
-    pNewEvent->setStutterDur(pEvent->getStutterDur());
-    return pNewEvent;
+    StepEvent* sev = addEvent(pEvent->getPosition(), pEvent->getCommand(), pEvent->getValue1start(), pEvent->getValue2start(), pEvent->getDuration());
+    sev->setValue1end(pEvent->getValue1end());
+    sev->setValue2end(pEvent->getValue2end());
+    sev->setStutterCount(pEvent->getStutterCount());
+    sev->setStutterDur(pEvent->getStutterDur());
+    return sev;
 }
 
 void Pattern::deleteEvent(uint32_t position, uint8_t command, uint8_t value1)
@@ -86,12 +115,12 @@ void Pattern::deleteEvent(uint32_t position, uint8_t command, uint8_t value1)
     }
 }
 
-bool Pattern::addNote(uint32_t step, uint8_t note, uint8_t velocity, float duration)
+bool Pattern::addNote(uint32_t step, uint8_t note, uint8_t velocity, float duration, float offset)
 {
     //!@todo Should we limit note length to size of pattern?
     if(step >= (m_nBeats * m_nStepsPerBeat) || note > 127 || velocity > 127) // || duration > (m_nBeats * m_nStepsPerBeat))
         return false;
-    addEvent(step, MIDI_NOTE_ON, note, velocity, duration);
+    addEvent(step, MIDI_NOTE_ON, note, velocity, duration, offset);
     return true;
 }
 
@@ -112,7 +141,7 @@ uint8_t Pattern::getNoteVelocity(uint32_t step, uint8_t note)
 {
     for(StepEvent* ev : m_vEvents)
         if(ev->getPosition() == step && ev->getCommand() == MIDI_NOTE_ON && ev->getValue1start() == note)
-        return ev->getValue2start();
+        	return ev->getValue2start();
     return 0;
 }
 
@@ -139,6 +168,24 @@ float Pattern::getNoteDuration(uint32_t step, uint8_t note)
         return ev->getDuration();
     }
     return 0.0;
+}
+
+float Pattern::getNoteOffset(uint32_t step, uint8_t note) {
+    for(StepEvent* ev : m_vEvents)
+        if(ev->getPosition() == step && ev->getCommand() == MIDI_NOTE_ON && ev->getValue1start() == note)
+        	return ev->getOffset();
+    return 0;
+}
+
+void Pattern::setNoteOffset(uint32_t step, uint8_t note, float offset) {
+	if (offset < 0.0) offset = 0.0;
+    else if (offset > 0.99) offset = 0.99;
+    for (StepEvent* ev : m_vEvents) {
+        if(ev->getPosition() == step && ev->getCommand() == MIDI_NOTE_ON && ev->getValue1start() == note) {
+            ev->setOffset(offset);
+            return;
+        }
+    }
 }
 
 void Pattern::setStutter(uint32_t step, uint8_t note, uint8_t count, uint8_t dur)
@@ -199,6 +246,22 @@ void Pattern::setStutterDur(uint32_t step, uint8_t note, uint8_t dur)
         {
             //if (ev.getDuration() > dur * ev.getStutterCount())
                 ev->setStutterDur(dur);
+            return;
+        }
+}
+
+uint8_t Pattern::getPlayChance(uint32_t step, uint8_t note) {
+    for(StepEvent* ev : m_vEvents)
+        if(ev->getPosition() == step && ev->getCommand() == MIDI_NOTE_ON && ev->getValue1start() == note)
+            return ev->getPlayChance();
+    return 100;
+}
+
+void Pattern::setPlayChance(uint32_t step, uint8_t note, uint8_t chance) {
+    if (chance > 100) chance = 100;
+    for (StepEvent* ev : m_vEvents)
+        if (ev->getPosition() == step && ev->getCommand() == MIDI_NOTE_ON && ev->getValue1start() == note) {
+            ev->setPlayChance(chance);
             return;
         }
 }
@@ -351,6 +414,46 @@ uint8_t Pattern::getTonic()
     return m_nTonic;
 }
 
+void Pattern::setSwingDiv(uint32_t div) {
+	m_nSwingDiv = div;
+}
+
+uint32_t Pattern::getSwingDiv() {
+	return m_nSwingDiv;
+}
+
+void Pattern::setSwingAmount(float amount) {
+	m_fSwingAmount = amount;
+}
+
+float Pattern::getSwingAmount() {
+	return m_fSwingAmount;
+}
+
+void Pattern::setHumanTime(float amount) {
+	m_fHumanTime = amount;
+}
+
+float Pattern::getHumanTime() {
+	return m_fHumanTime;
+}
+
+void Pattern::setHumanVelo(float amount) {
+	m_fHumanVelo = amount;
+}
+
+float Pattern::getHumanVelo() {
+	return m_fHumanVelo;
+}
+
+void Pattern::setPlayChance(float chance) {
+	m_fPlayChance = chance;
+}
+
+float Pattern::getPlayChance() {
+	return m_fPlayChance;
+}
+
 void Pattern::transpose(int value)
 {
     // Check if any notes will be transposed out of MIDI note range (0..127)
@@ -445,14 +548,12 @@ void Pattern::changeStutterDurAll(int value)
 
 void Pattern::clear()
 {
-    for(StepEvent* ev : m_vEvents)
-        delete ev;
-    m_vEvents.clear();
+	clearStepEventVector(&m_vEvents);
 }
 
 StepEvent* Pattern::getEventAt(uint32_t index)
 {
-    if(index >= m_vEvents.size())
+    if(index < 0 || index >= m_vEvents.size())
         return NULL;
     return m_vEvents[index];
 }
@@ -484,6 +585,13 @@ void Pattern::setRefNote(uint8_t note)
         m_nRefNote = note;
 }
 
+bool Pattern::getQuantizeNotes() {
+	return m_bQuantizeNotes;
+}
+
+void Pattern::setQuantizeNotes(bool flag) {
+	m_bQuantizeNotes = flag;
+}
 
 uint32_t Pattern::getLastStep()
 {
@@ -497,3 +605,90 @@ uint32_t Pattern::getLastStep()
     }
     return nStep;
 }
+
+// Pattern Snapshots => Undo/Redo
+
+void Pattern::clearStepEventVector(StepEventVector* sev) {
+	if (sev && sev->size() > 0) {
+    	for (StepEvent* ev : *sev)
+        	delete ev;
+    	sev->clear();
+   	}
+}
+
+bool Pattern::restoreSnapshot(StepEventVector* sev) {
+	if (sev) {
+		clear();
+		for(StepEvent* ev : *sev) {
+			m_vEvents.push_back(new StepEvent(ev));
+		}
+		return true;
+	}
+	return false;
+}
+
+void Pattern::resetSnapshots() {
+	// Destroy events
+	for (StepEventVector* sev : m_vSnapshots) {
+		clearStepEventVector(sev);
+        delete(sev);
+    }
+    m_vSnapshots.clear();
+    //m_vSnapshotPos = m_vSnapshots.end();
+    saveSnapshot();
+}
+
+void Pattern::saveSnapshot() {
+	// Delete snapshots from the current position, truncating the history
+    if (m_vSnapshotPos < m_vSnapshots.end()) {
+    	for (auto it = m_vSnapshotPos + 1; it < m_vSnapshots.end(); it++) {
+    		clearStepEventVector(*it);
+	    	delete(*it);
+        }
+        m_vSnapshots.erase(m_vSnapshotPos + 1, m_vSnapshots.end());
+    }
+    // Push snapshot at the end of the truncated history
+    StepEventVector* ss = new StepEventVector();
+    for (StepEvent* ev : m_vEvents) {
+    	ss->push_back(new StepEvent(ev));
+    }
+    m_vSnapshots.push_back(ss);
+    m_vSnapshotPos = m_vSnapshots.end() - 1;
+}
+
+bool Pattern::undo() {
+	if (m_vSnapshotPos > m_vSnapshots.begin()) {
+		// Undo one position
+		m_vSnapshotPos--;
+		return restoreSnapshot(*m_vSnapshotPos);
+    }
+    return false;
+}
+
+bool Pattern::redo() {
+    if (m_vSnapshots.size() > 1 && m_vSnapshotPos < m_vSnapshots.end() - 1) {
+    	// Redo one position
+    	m_vSnapshotPos++;
+		return restoreSnapshot(*m_vSnapshotPos);
+    }
+    return false;
+}
+
+bool Pattern::undoAll() {
+	if (m_vSnapshotPos > m_vSnapshots.begin()) {
+		// Undo one position
+		m_vSnapshotPos = m_vSnapshots.begin();
+		return restoreSnapshot(*m_vSnapshotPos);
+    }
+    return false;
+}
+
+bool Pattern::redoAll() {
+    if (m_vSnapshots.size() > 1 && m_vSnapshotPos < m_vSnapshots.end() - 1) {
+    	// Undo one position
+    	m_vSnapshotPos = m_vSnapshots.end() - 1;
+    	return restoreSnapshot(*m_vSnapshotPos);
+    }
+    return false;
+}
+

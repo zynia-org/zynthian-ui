@@ -37,6 +37,7 @@ from os.path import isfile, isdir, ismount, join
 import zynautoconnect
 from . import zynthian_controller
 from zyngui import zynthian_gui_config
+from zyncoder.zyncore import lib_zyncore
 
 # --------------------------------------------------------------------------------
 # Basic Engine Class: Spawn a process & manage IPC communication using pexpect
@@ -61,7 +62,7 @@ class zynthian_basic_engine:
 	def __init__(self, name=None, command=None, prompt=None, cwd=None):
 		self.name = name
 		self.proc = None
-		self.proc_timeout = 20
+		self.proc_timeout = 30
 		self.proc_start_sleep = None
 		self.command = command
 		self.command_env = os.environ.copy()
@@ -268,11 +269,7 @@ class zynthian_engine(zynthian_basic_engine):
 		for ext in cls.preset_fexts:
 			rules.append(fnmatch.translate("*." + ext))
 		rerule = re.compile("(" + "|".join(rules) + ")", re.IGNORECASE)
-		if recursion:
-			glob_pat = "/".join(["**"] * recursion)
-		else:
-			glob_pat = "*"
-		for item in glob.iglob(os.path.join(path, glob_pat), recursive=True):
+		for item in glob.iglob(os.path.join(path, "**"), recursive=True):
 			if rerule.match(item):
 				return True
 		return False
@@ -283,15 +280,11 @@ class zynthian_engine(zynthian_basic_engine):
 		for ext in cls.preset_fexts:
 			rules.append(fnmatch.translate("*." + ext))
 		rerule = re.compile("(" + "|".join(rules) + ")", re.IGNORECASE)
-		if recursion:
-			glob_pat = "/".join(["**"] * recursion)
-		else:
-			glob_pat = "*"
 		res = []
-		for item in glob.iglob(os.path.join(path, glob_pat), recursive=True):
+		for item in glob.iglob(os.path.join(path, "**"), recursive=True):
 			if rerule.match(item):
 				res.append(item)
-		return res
+		return sorted(res, key=str.casefold)
 
 	@staticmethod
 	def get_filelist(dpath, fext):
@@ -348,18 +341,6 @@ class zynthian_engine(zynthian_basic_engine):
 	@classmethod
 	def get_bank_dirlist(cls, recursion=1, exclude_empty=True):
 		banks = []
-		# Internal storage banks
-		for root_bank_dir in cls.root_bank_dirs:
-			sbanks = []
-			walk = next(os.walk(root_bank_dir[1]))
-			walk[1].sort()
-			for bank_dir in walk[1]:
-				bank_path = walk[0] + "/" + bank_dir
-				if not exclude_empty or cls.find_some_preset_file(bank_path, recursion):
-					sbanks.append([bank_path, None, bank_dir, None, bank_dir])
-			if len(sbanks):
-				banks.append([None, None, root_bank_dir[0], None, None])
-				banks += sbanks
 
 		# External storage banks
 		for exd in zynthian_gui_config.get_external_storage_dirs(cls.ex_data_dir):
@@ -390,6 +371,19 @@ class zynthian_engine(zynthian_basic_engine):
 				banks.append([None, None, f"USB> {os.path.basename(exd)}", None, None])
 				banks += sbanks
 
+		# Internal storage banks
+		for root_bank_dir in cls.root_bank_dirs:
+			sbanks = []
+			walk = next(os.walk(root_bank_dir[1]))
+			walk[1].sort()
+			for bank_dir in walk[1]:
+				bank_path = walk[0] + "/" + bank_dir
+				if not exclude_empty or cls.find_some_preset_file(bank_path, recursion):
+					sbanks.append([bank_path, None, bank_dir, None, bank_dir])
+			if len(sbanks):
+				banks.append([None, None, "SD> " + root_bank_dir[0], None, None])
+				banks += sbanks
+
 		return banks
 
 	# ---------------------------------------------------------------------------
@@ -403,9 +397,21 @@ class zynthian_engine(zynthian_basic_engine):
 		processor.refresh_controllers()
 
 	def remove_processor(self, processor):
-		self.processors.remove(processor)
-		zynautoconnect.remove_sidechain_ports(processor.jackname)
-		processor.jackname = None
+		try:
+			self.processors.remove(processor)
+			zynautoconnect.remove_sidechain_ports(processor.jackname)
+			processor.jackname = None
+		except Exception as e:
+			logging.error(f"Processor {processor.get_name()} not found in engine's processors list => {e}")
+
+	def get_free_parts(self):
+		free_parts = list(range(0, 16))
+		for processor in self.processors:
+			try:
+				free_parts.remove(processor.part_i)
+			except:
+				pass
+		return free_parts
 
 	def get_name(self, processor=None):
 		return self.name
@@ -418,14 +424,15 @@ class zynthian_engine(zynthian_basic_engine):
 	# ---------------------------------------------------------------------------
 
 	def set_midi_chan(self, processor):
-		pass
+		if processor:
+			lib_zyncore.zmop_set_midi_chan(processor.chain.zmop_index, processor.get_midi_chan())
 
 	def get_active_midi_channels(self):
 		chans = []
 		for processor in self.processors:
 			if processor.midi_chan is None:
 				return None
-			elif processor.midi_chan >= 0 and processor.midi_chan <= 15:
+			elif 0 <= processor.midi_chan <= 15:
 				chans.append(processor.midi_chan)
 		return chans
 

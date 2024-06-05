@@ -177,6 +177,7 @@ class zynthian_gui_admin(zynthian_gui_selector):
 			self.list_data.append((self.state_manager.start_vncserver, 0, "\u2610 VNC Server"))
 
 		self.list_data.append((None, 0, "> SETTINGS"))
+		self.list_data.append((self.bluetooth, 0, "Bluetooth"))
 		if "brightness_config" in self.zyngui.screens and self.zyngui.screens["brightness_config"].get_num_zctrls() > 0:
 			self.list_data.append((self.zyngui.brightness_config, 0, "Brightness"))
 		if "cv_config" in self.zyngui.screens:
@@ -385,6 +386,9 @@ class zynthian_gui_admin(zynthian_gui_selector):
 
 		lib_zyncore.set_midi_system_events(zynthian_gui_config.midi_sys_enabled)
 		self.update_list()
+
+	def bluetooth(self):
+			self.zyngui.show_screen("bluetooth")
 
 	# -------------------------------------------------------------------------
 	# Global Transpose editing

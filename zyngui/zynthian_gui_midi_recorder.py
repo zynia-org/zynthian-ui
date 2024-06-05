@@ -57,20 +57,15 @@ class zynthian_gui_midi_recorder(zynthian_gui_selector):
 
 	def refresh_status(self):
 		super().refresh_status()
+		update = False
 		if self.recording != self.zyngui.state_manager.status_midi_recorder:
 			self.recording = self.zyngui.state_manager.status_midi_recorder
-			self.fill_list()
+			update = True
 		if self.playing != self.zyngui.state_manager.status_midi_player:
 			self.playing = self.zyngui.state_manager.status_midi_player
-			self.fill_list()
-			self.update_status_playback()
-
-	def XXX_build_view(self):
-		if super().build_view():
-			self.update_status_playback()
-			return True
-		else:
-			return False
+			update = True
+		if update:
+			self.update_list()
 
 	def hide(self):
 		self.hide_playing_bpm()
@@ -170,16 +165,17 @@ class zynthian_gui_midi_recorder(zynthian_gui_selector):
 				self.select_listbox(self.index)
 
 	def update_status_loop(self, fill=False):
-		if zynthian_gui_config.midi_play_loop:
-			self.list_data[1] = ("LOOP", 0, "\u2612 Loop Play")
-			libsmf.setLoop(True)
-		else:
-			self.list_data[1] = ("LOOP", 0, "\u2610 Loop Play")
-			libsmf.setLoop(False)
-		if fill:
-			self.listbox.delete(1)
-			self.listbox.insert(1, self.list_data[1][2])
-			self.select_listbox(self.index)
+		if self.list_data:
+			if zynthian_gui_config.midi_play_loop:
+				self.list_data[1] = ("LOOP", 0, "\u2612 Loop Play")
+				libsmf.setLoop(True)
+			else:
+				self.list_data[1] = ("LOOP", 0, "\u2610 Loop Play")
+				libsmf.setLoop(False)
+			if fill:
+				self.listbox.delete(1)
+				self.listbox.insert(1, self.list_data[1][2])
+				self.select_listbox(self.index)
 
 	def select_action(self, i, t='S'):
 		fpath = self.list_data[i][0]
@@ -196,7 +192,7 @@ class zynthian_gui_midi_recorder(zynthian_gui_selector):
 			if t == 'S':
 				self.zyngui.state_manager.toggle_midi_playback(fpath)
 			else:
-				self.zyngui.show_confirm(f"Do you really want to delete '{self.list_data[i][2]}'?", self.delete_confirmed, fpath)
+				self.show_smf_options()
 
 	# Function to handle *all* switch presses.
 	# swi: Switch index [0=Layer, 1=Back, 2=Snapshot, 3=Select]
@@ -205,15 +201,55 @@ class zynthian_gui_midi_recorder(zynthian_gui_selector):
 	def switch(self, swi, t='S'):
 		if swi == 0:
 			if t == 'S':
-				return True # Block short layer press
+				return True  # Block short layer press
 
-	def delete_confirmed(self, fpath):
-		logging.info("DELETE MIDI RECORDING: {}".format(fpath))
+	def show_smf_options(self):
+		smf = self.list_data[self.index]
+		smf_fname = smf[2]
+		options = {}
+		options["Rename"] = smf
+		options["Delete"] = smf
+		self.zyngui.screens['option'].config(f"MIDI file {smf_fname}", options, self.smf_options_cb)
+		self.zyngui.show_screen('option')
+
+	def show_menu(self):
+		self.show_smf_options()
+
+	def toggle_menu(self):
+		if self.shown:
+			self.show_menu()
+		elif self.zyngui.current_screen == "option":
+			self.close_screen()
+
+	def smf_options_cb(self, option, smf):
+		if option == "Rename":
+			self.zyngui.show_keyboard(self.rename_smf, smf[2])
+		elif option == "Delete":
+			self.delete_smf(smf)
+
+	def rename_smf(self, new_name):
+		smf = self.list_data[self.index]
+		new_name = new_name.strip()
+		if new_name != smf[2]:
+			try:
+				# TODO: Confirm rename if overwriting existing file
+				parts = os.path.split(smf[0])
+				new_fpath = f"{parts[0]}/{new_name}.mid"
+				os.rename(smf[0], new_fpath)
+				self.update_list()
+			except Exception as e:
+				logging.error("Failed to rename MIDI file => {}".format(e))
+
+	def delete_smf(self, smf):
+		self.zyngui.show_confirm(f"Do you really want to delete '{smf[2]}'?", self.delete_smf_confirmed, smf)
+
+	def delete_smf_confirmed(self, smf):
+		logging.info("DELETE MIDI FILE: {}".format(smf[0]))
 		try:
-			os.remove(fpath)
-			self.fill_list()
+			os.remove(smf[0])
+			self.update_list()
 		except Exception as e:
-			logging.error(e)
+			logging.error(f"Failed to delete MIDI file => {e}")
 
 	def toggle_recording(self):
 		self.zyngui.state_manager.toggle_midi_record()

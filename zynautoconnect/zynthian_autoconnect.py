@@ -55,6 +55,7 @@ logger.setLevel(log_level)
 # -------------------------------------------------------------------------------
 
 MAIN_MIX_CHAN = 17 				# TODO: Get this from mixer
+
 jclient = None					# JACK client
 aclient = None					# ALSA client
 thread = None					# Thread to check for changed MIDI ports
@@ -73,11 +74,12 @@ sidechain_map = {}				# Map of all audio target port names to use as sidechain i
 sidechain_ports = []			# List of currently active audio destination port names not to autoroute, e.g. sidechain inputs
 
 # These variables are initialized in the init() function. These are "example values".
-max_num_devs = 16     # Max number of MIDI devices
-max_num_chains = 16   # Max number of chains
-devices_in = []       # List of MIDI input devices
-devices_in_mode = []  # List of MIDI input devices modes
-devices_out = []      # List of MIDI output devices
+max_num_devs = 16     			# Max number of MIDI devices
+max_num_chains = 16  		 	# Max number of chains
+devices_in = []       			# List of MIDI input devices
+devices_in_mode = []  			# List of MIDI input devices modes
+devices_out = []      			# List of MIDI output devices
+usb_gadget_devid = None			# Device ID of USB-HOST device (usb gadget)
 
 # zyn_routed_* are used to avoid changing routes made by other jack clients
 zyn_routed_audio = {}			# Map of lists of audio sources routed by zynautoconnect, indexed by destination
@@ -216,15 +218,15 @@ def get_midi_in_devid(idev):
 		return None
 
 
-def get_midi_out_devid(idev):
-	"""Get the ALSA name of the port connected from ZMOP port
+def get_midi_out_dev(idev):
+	"""Get the jack port connected from ZMOP port
 	
 	idev : Index of ZMOP port
-	returns : ALSA name or None if not found
+	returns : Jack port or None if not found
 	"""
 
 	try:
-		return devices_out[idev].aliases[0].split('/', 1)[1]
+		return devices_out[idev]
 	except:
 		return None
 
@@ -248,24 +250,6 @@ def get_midi_in_devid_by_uid(uid, mapped=False):
 			pass
 	return None
 
-
-def get_midi_out_devid_by_uid(uid):
-	"""Get the index of the ZMOP connected to physical output
-	
-	name : The uid name of the port (jack alias [0])
-	"""
-
-	for i, port in enumerate(devices_out):
-		try:
-			if mapped:
-				if port.aliases[0] == uid:
-					return i
-			else:
-				if port.aliases[0].split('/', 1)[1] == uid.split('/', 1)[1]:
-					return i
-		except:
-			pass
-	return None
 
 def get_midi_in_dev_mode(idev):
 	"""Get mode for a midi input device
@@ -384,21 +368,34 @@ def request_midi_connect(fast=False):
 		deferred_midi_connect = True
 
 
+def find_usb_gadget_device():
+	global usb_gadget_devid
+	candidates = ["fe980000", "1000480000"]
+	for devid in candidates:
+		if os.path.isdir(f"/sys/bus/platform/devices/{devid}.usb/gadget.0"):
+			usb_gadget_devid = devid
+			return
+	usb_gadget_devid = None
+
 def is_host_usb_connected():
 	"""Check if the USB host (e.g. USB-Type B connection) is connected
 
 	returns : True if connected to USB host (not necessarily a MIDI port!)
 	"""
 
-	try:
-		with open("/sys/bus/platform/devices/fe980000.usb/udc/fe980000.usb/state") as f:
-			if f.read() != "configured\n":
-				return False
-		with open("/sys/class/udc/fe980000.usb/device/gadget/suspended") as f:
-			if f.read() == "1\n":
-				return False
-	except:
-		return False
+	if usb_gadget_devid is None:
+		find_usb_gadget_device()
+
+	if usb_gadget_devid:
+		try:
+			with open(f"/sys/bus/platform/devices/{usb_gadget_devid}.usb/udc/{usb_gadget_devid}.usb/state") as f:
+				if f.read() != "configured\n":
+					return False
+			with open(f"/sys/class/udc/{usb_gadget_devid}.usb/device/gadget.0/suspended") as f:
+				if f.read() == "1\n":
+					return False
+		except:
+			return False
 	return True
 
 def add_hw_port(port):
@@ -587,16 +584,20 @@ def midi_autoconnect():
 					elif dst_chain.synth_slots:
 						proc = dst_chain.synth_slots[0][0]
 						routes[proc.engine.get_jackname()] = route
-						
 
 		for dst_name in routes:
-			dst_ports = jclient.get_ports(re.escape(dst_name), is_input=True, is_midi=True)		
-			for src_name in routes[dst_name]:
-				src_ports = jclient.get_ports(src_name, is_output=True, is_midi=True)
-				if src_ports and dst_ports:
-					src = src_ports[0]
-					dst = dst_ports[0]
-					required_routes[dst.name].add(src.name)
+			dst_ports = jclient.get_ports(re.escape(dst_name), is_input=True, is_midi=True)
+			if not dst_ports:
+				# Try to get destiny port by alias
+				try:
+					dst_ports = [jclient.get_port_by_name(dst_name)]
+				except:
+					pass
+			if dst_ports:
+				for src_name in routes[dst_name]:
+					src_ports = jclient.get_ports(src_name, is_output=True, is_midi=True)
+					if src_ports:
+						required_routes[dst_ports[0].name].add(src_ports[0].name)
 
 		# Add chain MIDI outputs
 		if chain.midi_slots and chain.midi_thru:
@@ -647,12 +648,14 @@ def midi_autoconnect():
 				ports = jclient.get_ports(proc.get_jackname(True), is_midi=True, is_output=True)
 				required_routes["ZynMidiRouter:ctrl_in"].add(ports[0].name)
 				ctrl_fb_procs.append(proc)
-			except:
+				#logging.debug(f"Routed controller feedback from {proc.get_jackname(True)}")
+			except Exception as e:
+				#logging.error(f"Can't route controller feedback from {proc.get_name()} => {e}")
 				pass
 
 	# Remove from control feedback list those processors removed from chains
 	for i, proc in enumerate(ctrl_fb_procs):
-		if proc not in chain_manager.processors:
+		if proc.id not in chain_manager.processors:
 			del ctrl_fb_procs[i]
 
 	# Connect ZynMidiRouter:step_out to ZynthStep input
@@ -781,7 +784,7 @@ def audio_autoconnect():
 				# Auto mono/stereo routing
 				source_count = len(src_ports)
 				if source_count and dst_count:
-					for i in range(max(source_count, dst_count)):
+					for i in range(min(2, max(source_count, dst_count))):
 						src = src_ports[min(i, source_count - 1)]
 						dst = dst_ports[min(i, dst_count - 1)]
 						required_routes[dst.name].add(src.name)
@@ -892,65 +895,47 @@ def build_midi_port_name(port):
 		return f"NET:touchosc_{port.name.split()[0][6:]}", "TouchOSC"
 	elif port.name.startswith("aubio:midi_out"):
 		return f"AUBIO:in", "Audio\u2794MIDI"
+	elif port.name.startswith("BLE_MIDI:"):
+		return port.aliases[0], port.aliases[1]
 
 	idx = 0
 	
 	if port.aliases and (port.aliases[0].startswith("in-hw-") or port.aliases[0].startswith("out-hw-")):
 		# Uninitiated port
 		try:
-			if port.name.endswith(" Bluetooth"):
-				# Found BLE MIDI device
-				port_name = port.name[:-10]
-				# TODO: I'm not sure this is OK
-				if len(port.aliases):
-					# UID already assigned
-					return port.aliases[0], port_name
-				# Get BLE address
-				devices = check_output(['bluetoothctl', 'devices'], encoding='utf-8', timeout=0.1).split('\n')
-				for device in devices:
-					if not device:
-						continue
-					addr = device.split()[1]
-					dev_name = device[25:]
-					if dev_name == port_name:
-						if port.is_input:
-							return f"BLE:{addr}_OUT", port_name
-						else:
-							return f"BLE:{addr}_IN", port_name
-			else:
-				# USB ports
-				io, hw, card, slot, idx, port_name = port.aliases[0].split('-', 5)
-				with open(f"/proc/asound/card{card}/midi0", "r") as f:
-					config = f.readlines()
-					port_name = config[0].strip()
-					n_inputs = 0
-					n_outputs = 0
-					for line in config:
-						if line.startswith("Input"):
-							n_inputs += 1
-						elif line.startswith("Output"):
-							n_outputs += 1
-				if port_name == "f_midi":
-					port_name = "USB HOST"
-					if port.is_output:
-						uid = "USB:f_midi OUT 1"
-					else:
-						uid = "USB:f_midi IN 1"
+			# USB ports
+			io, hw, card, slot, idx, port_name = port.aliases[0].split('-', 5)
+			with open(f"/proc/asound/card{card}/midi0", "r") as f:
+				config = f.readlines()
+				port_name = config[0].strip()
+				n_inputs = 0
+				n_outputs = 0
+				for line in config:
+					if line.startswith("Input"):
+						n_inputs += 1
+					elif line.startswith("Output"):
+						n_outputs += 1
+			if port_name == "f_midi":
+				port_name = "USB HOST"
+				if port.is_output:
+					uid = "USB:f_midi OUT 1"
 				else:
-					with open(f"/proc/asound/card{card}/usbbus", "r") as f:
-						usbbus = f.readline()
-					tmp = re.findall(r'\d+', usbbus)
-					bus = int(tmp[0])
-					address = int(tmp[1])
-					usb_port_nos = usb.core.find(bus=bus, address=address).port_numbers
-					uid = f"{bus}"
-					for i in usb_port_nos:
-						uid += f".{i}"
-					uid = f"USB:{uid}/{port_name}"
-					if port.is_input and n_inputs > 1:
-						port_name = f"{port_name} {int(idx) + 1}"
-					elif port.is_output and n_outputs > 1:
-						port_name = f"{port_name} {int(idx) + 1}"
+					uid = "USB:f_midi IN 1"
+			else:
+				with open(f"/proc/asound/card{card}/usbbus", "r") as f:
+					usbbus = f.readline()
+				tmp = re.findall(r'\d+', usbbus)
+				bus = int(tmp[0])
+				address = int(tmp[1])
+				usb_port_nos = usb.core.find(bus=bus, address=address).port_numbers
+				uid = f"{bus}"
+				for i in usb_port_nos:
+					uid += f".{i}"
+				uid = f"USB:{uid}/{port_name}"
+				if port.is_input and n_inputs > 1:
+					port_name = f"{port_name} {int(idx) + 1}"
+				elif port.is_output and n_outputs > 1:
+					port_name = f"{port_name} {int(idx) + 1}"
 
 		except:
 			uid = port.name

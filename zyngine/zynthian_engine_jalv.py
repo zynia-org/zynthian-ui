@@ -58,14 +58,16 @@ class zynthian_engine_jalv(zynthian_engine):
 			#'http://calf.sourceforge.net/plugins/Organ': {"RPi4:":True, "RPi3": False, "RPi2": False },
 			#'http://nickbailey.co.nr/triceratops': {"RPi4:":True, "RPi3": False, "RPi2": False },
 			#'http://code.google.com/p/amsynth/amsynth': {"RPi4:":True, "RPi3": False, "RPi2": False },
-			'http://gareus.org/oss/lv2/tuna#one': {"RPi4": False, "RPi3": False, "RPi2": False},  # Disable because CPU usage and widget implemented in main UI
-			"http://tytel.org/helm": {"RPi4": False, "RPi3": True, "RPi2": False}  # Better CPU with gtk but only qt4 works on RPi4
+			'http://gareus.org/oss/lv2/tuna#one': {"RPi5": False, "RPi4": False, "RPi3": False, "RPi2": False},  # Disable because CPU usage and widget implemented in main UI
+			'http://gareus.org/oss/lv2/tuna#mod': {"RPi5": False, "RPi4": False, "RPi3": False, "RPi2": False},  # Disable because CPU usage and widget implemented in main UI
+			#"http://tytel.org/helm": {"RPi5": False, "RPi4": False, "RPi3": True, "RPi2": False}  # Better CPU with gtk but only qt4 works on RPi4
 	}
 
 	plugins_custom_gui = {
 		'http://gareus.org/oss/lv2/meters#spectr30mono': "/zynthian/zynthian-ui/zyngui/zynthian_widget_spectr30.py",
 		'http://gareus.org/oss/lv2/meters#spectr30stereo': "/zynthian/zynthian-ui/zyngui/zynthian_widget_spectr30.py",
 		'http://gareus.org/oss/lv2/tuna#one': "/zynthian/zynthian-ui/zyngui/zynthian_widget_tunaone.py",
+		'http://gareus.org/oss/lv2/tuna#mod': "/zynthian/zynthian-ui/zyngui/zynthian_widget_tunaone.py",
 		'http://looperlative.com/plugins/lp3-basic': "/zynthian/zynthian-ui/zyngui/zynthian_widget_looper.py"
 	}
 
@@ -274,7 +276,7 @@ class zynthian_engine_jalv(zynthian_engine):
 		for bank_label, info in self.preset_info.items():
 			bank_list.append((str(info['bank_url']), None, bank_label, None))
 		if len(bank_list) == 0:
-			bank_list.append(("", None, "", None))
+			bank_list.append(("", None, "None", None))
 		return bank_list
 
 	def set_bank(self, processor, bank):
@@ -365,7 +367,7 @@ class zynthian_engine_jalv(zynthian_engine):
 				if len(parts) == 2:
 					self.lv2_zctrl_dict[parts[0]]._set_value(float(parts[1]))
 			except Exception as e:
-				logging.error(e)
+				logging.warning(e)
 
 		return True
 
@@ -396,7 +398,7 @@ class zynthian_engine_jalv(zynthian_engine):
 	def save_preset(self, bank, preset_name):
 		# Save preset (jalv)
 		if not bank:
-			bank = ["", None, "", None]
+			bank = ["", None, "None", None]
 		res = self.proc_cmd("save preset %s,%s" % (bank[0], preset_name)).split("\n")
 		
 		if res[-1].startswith("ERROR"):

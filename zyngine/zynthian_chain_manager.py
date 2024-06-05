@@ -738,7 +738,7 @@ class zynthian_chain_manager:
         else:
             return 1
 
-    def add_processor(self, chain_id, eng_code, parallel=False, slot=None, proc_id=None, post_fader=False, fast_refresh=True):
+    def add_processor(self, chain_id, eng_code, parallel=False, slot=None, proc_id=None, post_fader=False, fast_refresh=True, eng_config=None):
         """Add a processor to a chain
 
         chain : Chain ID
@@ -748,6 +748,7 @@ class zynthian_chain_manager:
         proc_id : Processor UID (Default: Use next available ID)
         post_fader : True to move the fader position
         fast_refresh : False to trigger slow autoconnect (Default: Fast autoconnect)
+        eng_config: Extended configuration for the engine (optional)
         Returns : processor object or None on failure
         """
 
@@ -779,7 +780,7 @@ class zynthian_chain_manager:
             # TODO: Fails to detect MIDI only chains in snapshots
             if chain.mixer_chan is None and processor.type != "MIDI Tool":
                 chain.mixer_chan = self.get_next_free_mixer_chan()
-            engine = self.start_engine(processor, eng_code)
+            engine = self.start_engine(processor, eng_code, eng_config)
             if engine:
                 chain.rebuild_graph()
                 # Update group chains
@@ -932,11 +933,12 @@ class zynthian_chain_manager:
     # Engine Management
     # ------------------------------------------------------------------------
 
-    def start_engine(self, processor, eng_code):
+    def start_engine(self, processor, eng_code, eng_config=None):
         """Starts or reuse an existing engine
 
         processor : processor owning engine
         eng_code : Engine short code
+        eng_config: Extended configuration (optional)
         Returns : engine object
         """
 
@@ -963,6 +965,10 @@ class zynthian_chain_manager:
 
             self.zyngines[eng_key] = zyngine
             self.zyngine_counter += 1
+
+        # Set extended configuration (optional)
+        if eng_config:
+            zyngine.set_extended_config(eng_config)
 
         processor.set_engine(zyngine)
         return zyngine
@@ -992,13 +998,19 @@ class zynthian_chain_manager:
         """
         result = {}
         if etype in zynthian_lv2.engines_by_type:
+            # Add categories in right order
             for eng_cat in zynthian_lv2.engine_categories[etype]:
                 result[eng_cat] = {}
+            # Add engines to each category
             for eng_code, info in zynthian_lv2.engines_by_type[etype].items():
                 eng_cat = info["CAT"]
                 hide_if_single_proc = eng_code not in self.single_processor_engines or eng_code not in self.zyngines
                 if (info["ENABLED"] or all) and hide_if_single_proc:
                     result[eng_cat][eng_code] = info
+            # Remove empty categories
+            for eng_cat in list(result.keys()):
+                if not result[eng_cat]:
+                    del result[eng_cat]
         return result
 
     def get_next_jackname(self, jackname, sanitize=True):
@@ -1050,10 +1062,11 @@ class zynthian_chain_manager:
         #TODO: Remove superfluous parameters
         return state
 
-    def set_state(self, state):
+    def set_state(self, state, engine_config):
         """Create chains from state
 
         state : List of chain states
+        engine_config: Extended engine config
         Returns : True on success
         """
 
@@ -1073,11 +1086,17 @@ class zynthian_chain_manager:
                 for slot_state in chain_state["slots"]:
                     # slot_state is a dict of proc_id:proc_type for procs in this slot
                     for index, proc_id in enumerate(slot_state):
+                        eng_code = slot_state[proc_id]
+                        try:
+                            eng_config = engine_config[eng_code]
+                        except:
+                            eng_config = None
                         # Use index to identify first proc in slot (add in series) - others are added in parallel
                         if index:
-                            self.add_processor(chain_id, slot_state[proc_id], CHAIN_MODE_PARALLEL, proc_id=int(proc_id), fast_refresh=False)
+                            mode = CHAIN_MODE_PARALLEL
                         else:
-                            self.add_processor(chain_id, slot_state[proc_id], CHAIN_MODE_SERIES, proc_id=int(proc_id), fast_refresh=False)
+                            mode = CHAIN_MODE_SERIES
+                        self.add_processor(chain_id, eng_code, mode, proc_id=int(proc_id), fast_refresh=False, eng_config=eng_config)
             if "fader_pos" in chain_state:
                 self.chains[chain_id].fader_pos = chain_state["fader_pos"]
 
@@ -1216,13 +1235,14 @@ class zynthian_chain_manager:
             #logging.debug(f"MIDI CONTROL FEEDBACK {midi_chan}, {cc_num} => {cc_val}")
             try:
                 for proc in zynautoconnect.ctrl_fb_procs:
-                    key = (proc.midi_chan << 16) | (cc_num << 8)
-                    zctrls = self.chan_midi_cc_binding[key]
-                    for zctrl in zctrls:
-                        #logging.debug(f"CONTROLLER FEEDBACK {zctrl.symbol} ({proc.midi_chan}) => {cc_val}")
-                        zctrl.midi_control_change(cc_val, send=False)
-            except:
-                pass
+                    if proc.part_i == midi_chan:
+                        key = (proc.chain_id << 16) | (cc_num << 8)
+                        zctrls = self.chain_midi_cc_binding[key]
+                        for zctrl in zctrls:
+                            #logging.debug(f"CONTROLLER FEEDBACK {zctrl.symbol} ({midi_chan}) => {cc_val}")
+                            zctrl.midi_control_change(cc_val, send=False)
+            except Exception as e:
+                logging.warning(f"Can't manage control feedback for CH{midi_chan}:CC{cc_num} => {e}")
             return
 
         # Handle absolute CC binding
@@ -1473,8 +1493,13 @@ class zynthian_chain_manager:
         """
         proc = self.get_synth_processor(midi_chan)
         if proc:
-            return proc.get_preset_name()
-        return None
+            res = proc.get_preset_name()
+            if not res:
+                res = proc.get_bank_name()
+            if not res:
+                res = proc.get_name()
+            return res.replace("_", " ")
+        return ""
 
     # ---------------------------------------------------------------------------
     # Extended Config

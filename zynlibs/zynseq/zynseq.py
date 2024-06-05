@@ -91,13 +91,23 @@ class zynseq(zynthian_engine):
 		try:
 			self.libseq = ctypes.cdll.LoadLibrary(dirname(realpath(__file__))+"/build/libzynseq.so")
 			self.libseq.getSequenceName.restype = ctypes.c_char_p
-			self.libseq.getTempo.restype = ctypes.c_double
+			self.libseq.addNote.argtypes = [ctypes.c_uint32, ctypes.c_uint8, ctypes.c_uint8, ctypes.c_float, ctypes.c_float]
 			self.libseq.getNoteDuration.restype = ctypes.c_float
-			self.libseq.addNote.argtypes = [ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_float]
 			self.libseq.changeDurationAll.argtypes = [ctypes.c_float]
+			self.libseq.getNoteOffset.restype = ctypes.c_float
+			self.libseq.setNoteOffset.argtypes = [ctypes.c_uint32, ctypes.c_uint8, ctypes.c_float]
+			self.libseq.setSwingAmount.argtypes = [ctypes.c_float]
+			self.libseq.getSwingAmount.restype = ctypes.c_float
+			self.libseq.setHumanTime.argtypes = [ctypes.c_float]
+			self.libseq.getHumanTime.restype = ctypes.c_float
+			self.libseq.setHumanVelo.argtypes = [ctypes.c_float]
+			self.libseq.getHumanVelo.restype = ctypes.c_float
+			self.libseq.setPlayChance.argtypes = [ctypes.c_float]
+			self.libseq.getPlayChance.restype = ctypes.c_float
+			self.libseq.getTempo.restype = ctypes.c_double
 			self.libseq.setTempo.argtypes = [ctypes.c_double]
-			self.libseq.setMetronomeVolume.argtypes = [ctypes.c_float]
 			self.libseq.getMetronomeVolume.restype = ctypes.c_float
+			self.libseq.setMetronomeVolume.argtypes = [ctypes.c_float]
 			self.libseq.getStateChange.argtypes = [ctypes.c_uint8, ctypes.c_uint8, ctypes.c_uint8, ctypes.POINTER(ctypes.c_uint32)]
 			self.libseq.getStateChange.restype = ctypes.c_uint8
 			self.libseq.getProgress.argtypes = [ctypes.c_uint8, ctypes.c_uint8, ctypes.c_uint8, ctypes.POINTER(ctypes.c_uint16)]
@@ -171,10 +181,7 @@ class zynseq(zynthian_engine):
 		if self.libseq:
 			self.libseq.setSequencesInBank(bank, 16)
 			for column in range(4):
-				if column == 3:
-					channel = 9
-				else:
-					channel = column
+				channel = column
 				for row in range(4):
 					seq = row + 4 * column
 					self.set_sequence_name(bank, seq, "{}".format(self.libseq.getPatternAt(bank, seq, 0, 0)))

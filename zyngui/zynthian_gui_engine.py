@@ -45,6 +45,14 @@ from zyngui.zynthian_gui_controller import zynthian_gui_controller
 
 class zynthian_gui_engine(zynthian_gui_selector):
 
+	engine_type_title = {
+		"MIDI Synth": "MIDI Instrument",
+		"Audio Effect": "Audio Effect",
+		"MIDI Tool": "MIDI tool",
+		"Audio Generator": "Audio Generator",
+		"Special": "Special"
+	}
+
 	def __init__(self):
 		# Custom layout for GUI engine
 		self.layout = {
@@ -71,7 +79,8 @@ class zynthian_gui_engine(zynthian_gui_selector):
 		self.info_canvas = None
 		super().__init__('Engine', True, False)
 
-		self.engine_info = self.zyngui.chain_manager.engine_info
+		self.chain_manager = self.zyngui.chain_manager
+		self.engine_info = self.chain_manager.engine_info
 		self.engine_info_dirty = False
 		self.xswipe_sens = 10
 
@@ -170,7 +179,8 @@ class zynthian_gui_engine(zynthian_gui_selector):
 			justify=tkinter.LEFT,
 			width=info_width,
 			text="",
-			font=(zynthian_gui_config.font_family, int(0.8 * zynthian_gui_config.font_size)),
+			#font=(zynthian_gui_config.font_family, int(0.8 * zynthian_gui_config.font_size)),
+			font=("sans-serif", int(0.8 * zynthian_gui_config.font_size)),
 			fill=zynthian_gui_config.color_panel_tx)
 
 		"""
@@ -212,10 +222,10 @@ class zynthian_gui_engine(zynthian_gui_selector):
 		#self.description_label.insert("1.0", eng_info["DESCR"])
 
 	def get_engines_by_cat(self):
-		self.zyngui.chain_manager.get_engine_info()
-		self.engine_info = self.zyngui.chain_manager.engine_info
+		self.chain_manager.get_engine_info()
+		self.engine_info = self.chain_manager.engine_info
 		self.proc_type = self.zyngui.modify_chain_status["type"]
-		self.engines_by_cat = self.zyngui.chain_manager.filtered_engines_by_cat(self.proc_type, all=self.show_all)
+		self.engines_by_cat = self.chain_manager.filtered_engines_by_cat(self.proc_type, all=self.show_all)
 		self.engine_cats = list(self.engines_by_cat.keys())
 		logging.debug(f"CATEGORIES => {self.engine_cats}")
 		#self.engines_by_cat = sorted(self.engines_by_cat.items(), key=lambda kv: "!" if kv[0] is None else kv[0])
@@ -250,17 +260,22 @@ class zynthian_gui_engine(zynthian_gui_selector):
 			self.list_data.append(("None", 0, "None", "None"))
 
 		# Show a single category or all
-		if self.cat_index < 0:
-			cats = self.engine_cats
+		if self.engine_cats:
+			if self.cat_index < 0:
+				cats = self.engine_cats
+			else:
+				if self.cat_index >= len(self.engine_cats):
+					self.cat_index = len(self.engine_cats) - 1
+				cats = [self.engine_cats[self.cat_index]]
 		else:
-			cats = [self.engine_cats[self.cat_index]]
+			cats = []
 
 		for cat in cats:
+			infos = self.engines_by_cat[cat]
+
 			# Add category header when showing several cats...
 			if len(cats) > 1:
 				self.list_data.append((None, len(self.list_data), "> {}".format(cat)))
-
-			infos = self.engines_by_cat[cat]
 
 			# Split engines in standalone & plugins
 			#standalone = []
@@ -324,7 +339,7 @@ class zynthian_gui_engine(zynthian_gui_selector):
 						if "processor" in self.zyngui.modify_chain_status:
 							# Replacing processor
 							pass
-						elif self.zyngui.chain_manager.get_slot_count(self.zyngui.modify_chain_status["chain_id"], self.zyngui.modify_chain_status["type"]):
+						elif self.chain_manager.get_slot_count(self.zyngui.modify_chain_status["chain_id"], self.zyngui.modify_chain_status["type"]):
 							# Adding to slot with existing processor - choose parallel/series
 							self.zyngui.screens['option'].config("Chain Mode", {"Series": False, "Parallel": True}, self.cb_add_parallel)
 							self.zyngui.show_screen('option')
@@ -348,7 +363,7 @@ class zynthian_gui_engine(zynthian_gui_selector):
 	def back_action(self):
 		if self.show_all:
 			if self.engine_info_dirty:
-				self.zyngui.chain_manager.save_engine_info()
+				self.chain_manager.save_engine_info()
 				self.engine_info_dirty = False
 			self.show_all = False
 			self.get_engines_by_cat()
@@ -362,6 +377,7 @@ class zynthian_gui_engine(zynthian_gui_selector):
 
 	def arrow_left(self):
 		self.zynpot_cb(2, -1)
+
 
 	def cb_add_parallel(self, option, value):
 		self.zyngui.modify_chain_status['parallel'] = value
@@ -380,7 +396,7 @@ class zynthian_gui_engine(zynthian_gui_selector):
 			self.zsel2.config(self.zsel2.zctrl)
 			self.zsel2.show()
 		else:
-			zsel2_ctrl = zynthian_controller(None, "cat_index", {'name': "Category", 'short_name': "Category", 'value_min': 0, 'value_max': len(self.engine_cats) - 1, 'value': self.cat_index})
+			zsel2_ctrl = zynthian_controller(self, "cat_index", {'name': "Category", 'short_name': "Category", 'value_min': 0, 'value_max': len(self.engine_cats) - 1, 'value': self.cat_index})
 			self.zsel2 = zynthian_gui_controller(zynthian_gui_config.select_ctrl - 1, self.main_frame, zsel2_ctrl, zs_hidden, selcounter=True, orientation=self.layout['ctrl_orientation'])
 		if not self.zselector_hidden:
 			self.zsel2.grid(row=self.layout['ctrl_pos'][2][0], column=self.layout['ctrl_pos'][2][1], sticky="news", pady=(0, 1))
@@ -409,6 +425,13 @@ class zynthian_gui_engine(zynthian_gui_selector):
 		else:
 			return super().zynpot_cb(i, dval)
 
+	def send_controller_value(self, zctrl):
+		if not self.shown:
+			return
+		if zctrl.symbol == "cat_index":
+			if self.cat_index != zctrl.value:
+				self.set_cat(zctrl.value)
+
 	def cb_listbox_motion(self, event):
 		super().cb_listbox_motion(event)
 		dx = self.listbox_x0 - event.x
@@ -423,8 +446,8 @@ class zynthian_gui_engine(zynthian_gui_selector):
 	def set_select_path(self):
 		path = ""
 		try:
-			path = self.zyngui.modify_chain_status["type"]
-			#chain = self.zyngui.chain_manager.chains[self.zyngui.modify_chain_status["chain_id"]].get_name()
+			path = zynthian_lv2.engine_type_title[self.zyngui.modify_chain_status["type"]]
+			#chain = self.chain_manager.chains[self.zyngui.modify_chain_status["chain_id"]].get_name()
 			#path = f"{chain}#{path}"
 		except:
 			pass

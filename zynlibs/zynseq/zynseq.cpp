@@ -23,82 +23,87 @@
  * ******************************************************************
  */
 
-#include <stdio.h> //provides printf
-#include <stdlib.h> //provides exit
-#include <thread> //provides thread for timer
-#include "sequencemanager.h" //provides management of sequences, patterns, events, etc
-#include "timebase.h" //provides timebase event map
-#include <jack/jack.h> //provides JACK interface
-#include <jack/midiport.h> //provides JACK MIDI interface
-#include "zynseq.h" //exposes library methods as c functions
 #include <set>
-#include <string>
-#include <cstring> //provides strcmp
-#include <queue> //provides queue
+#include <queue>
 #include <vector>
-#include "pattern.h"
+#include <string>
+#include <cstring>				// provides strcmp
 
-#include "metronome.h" // metronome wav data
+#include <stdio.h>				// provides printf
+#include <stdlib.h>				// provides exit
+#include <thread>				// provides thread for timer
+#include <jack/jack.h>			// provides JACK interface
+#include <jack/midiport.h>		// provides JACK MIDI interface
 
-#define FILE_VERSION 8
+#include "zynseq.h"				// exposes library methods as c functions
+#include "pattern.h"			// provides pattern objects
+#include "timebase.h"			// provides timebase event map
+#include "metronome.h"			// metronome wav data
+#include "sequencemanager.h"	// provides management of sequences, patterns, events, etc
+
+#define FILE_VERSION 9
 
 #define DPRINTF(fmt, args...) if(g_bDebug) fprintf(stderr, fmt, ## args)
 
 struct ev_start {
     uint32_t start;
     uint8_t velocity;
+    float offset;
 };
 static struct ev_start startEvents[128];
 
-SequenceManager g_seqMan; // Instance of sequence manager
-uint32_t g_nPattern = 0; // Index of currently selected pattern
-Sequence* g_pSequence = NULL; // Pattern editor sequence
-jack_port_t * g_pInputPort; // Pointer to the JACK input port
-jack_port_t * g_pOutputPort; // Pointer to the JACK output port
-jack_port_t* g_pMetronomePort; // Pointer to the JACK metronome audio output port
-
-jack_client_t *g_pJackClient = NULL; // Pointer to the JACK client
-
-jack_nframes_t g_nSampleRate = 44100; // Quantity of samples per second
-std::multimap<uint32_t,MIDI_MESSAGE*> g_mSchedule; // Schedule of MIDI events (queue for sending), indexed by scheduled play time (samples since JACK epoch)
-bool g_bDebug = false; // True to output debug info
-bool g_bPatternModified = false; // True if pattern has changed since last check
-size_t g_nPlayingSequences = 0; // Quantity of playing sequences
+jack_port_t * g_pInputPort;				// Pointer to the JACK input port
+jack_port_t * g_pOutputPort;			// Pointer to the JACK output port
+jack_port_t* g_pMetronomePort;			// Pointer to the JACK metronome audio output port
+jack_client_t *g_pJackClient = NULL;	// Pointer to the JACK client
+jack_nframes_t g_nSampleRate = 44100;	// Quantity of samples per second
 uint32_t g_nXruns = 0;
-bool g_bDirty = false; // True if anything has been modified
-std::set<std::string> g_setTransportClient; // Set of timebase clients having requested transport play
-bool g_bClientPlaying = false; // True if any external client has requested transport play
-bool g_bMidiRecord = false; // True to add notes to current pattern from MIDI input
 
-bool g_bSustain = false; // True if sustain pressed during note input
-uint8_t g_nInputRest = 0xFF; // MIDI note number that creates rest in pattern
-uint16_t g_nVerticalZoom = 12; // Quantity of rows to show in pattern and arranger view
-uint16_t g_nHorizontalZoom = 16; // Quantity of beats to show in arranger view
-char g_sName[16]; // Buffer to hold sequence name so that it can be sent back for Python to parse
+SequenceManager g_seqMan; 							// Instance of sequence manager
+uint32_t g_nPattern = 0;							// Index of currently edited pattern
+Sequence* g_pSequence = NULL;						// Pattern editor sequence
+std::multimap<uint32_t,MIDI_MESSAGE*> g_mSchedule;	// Schedule of MIDI events (queue for sending), indexed by scheduled play time (samples since JACK epoch)
+bool g_bMutex = false;								// Mutex lock for access to g_mSchedule
+bool g_bDebug = false;								// True to output debug info
+bool g_bPatternModified = false;					// True if pattern has changed since last check
+bool g_bDirty = false;								// True if anything has been modified
+size_t g_nPlayingSequences = 0;						// Quantity of playing sequences
+std::set<std::string> g_setTransportClient;			// Set of timebase clients having requested transport play
+bool g_bClientPlaying = false;						// True if any external client has requested transport play
+bool g_bMidiRecord = false;							// True to add notes to current pattern from MIDI input
+bool g_bSustain = false;							// True if sustain pressed during note input
 
-bool g_bMutex = false; // Mutex lock for access to g_mSchedule
+char g_sName[16];									// Buffer to hold sequence name so that it can be sent back for Python to parse
+uint8_t g_nInputRest = 0xFF;						// MIDI note number that creates rest in pattern
+uint16_t g_nVerticalZoom = 16;						// Quantity of rows to show in pattern and arranger view
+uint16_t g_nHorizontalZoom = 16;					// Quantity of beats to show in arranger view
 
 // Transport variables apply to next period
 uint32_t g_nBeatsPerBar = 4;
 float g_fBeatType = 4.0;
 double g_dTicksPerBeat = 1920.0;
-double g_dTempo = 120.0;
 double g_dTicksPerClock = g_dTicksPerBeat / PPQN;
-bool g_bTimebaseChanged = false; // True to trigger recalculation of timebase parameters
-Timebase* g_pTimebase = NULL; // Pointer to the timebase object for selected song
-TimebaseEvent* g_pNextTimebaseEvent = NULL; // Pointer to the next timebase event or NULL if no more events in this song
-uint32_t g_nBar = 1; // Current bar
-uint32_t g_nBeat = 1; // Current beat within bar
-uint32_t g_nTick = 0; // Current tick within bar
-double g_dBarStartTick = 0; // Quantity of ticks from start of song to start of current bar
-jack_nframes_t g_nTransportStartFrame = 0; // Quantity of frames from JACK epoch to transport start
-std::queue <std::pair<double,double>> g_qClockPos; // Queue of pending clock positions relative to JACK epoch and clock duration in frames at this time
+double g_dTempo = 120.0;
+bool g_bTimebaseChanged = false; 					// True to trigger recalculation of timebase parameters
+Timebase* g_pTimebase = NULL; 						// Pointer to the timebase object for selected song
+TimebaseEvent* g_pNextTimebaseEvent = NULL;			// Pointer to the next timebase event or NULL if no more events in this song
+uint32_t g_nBar = 1;								// Current bar
+uint32_t g_nBeat = 1;								// Current beat within bar
+uint32_t g_nTick = 0; 								// Current tick within bar
+double g_dBarStartTick = 0;							// Quantity of ticks from start of song to start of current bar
+jack_nframes_t g_nTransportStartFrame = 0;			// Quantity of frames from JACK epoch to transport start
+std::queue <std::pair<double,double>> g_qClockPos;	// Queue of pending clock positions relative to JACK epoch and clock duration in frames at this time
 double g_dFramesPerClock = getFramesPerClock(g_dTempo); //!@todo Change to integer will have 0.1% jitter at 1920 PPQN and much better jitter (0.01%) at current 24PPQN
-uint8_t g_nClock = 0; // Quantity of MIDI clocks since start of beat
-uint8_t g_nMidiClock = 0; // Quantity of *RECEIVED* MIDI clocks since start of beat
-uint8_t g_nClockSource = TRANSPORT_CLOCK_INTERNAL; // Source of clock that progresses playback
-bool g_bSendMidiClock = false; // True to send MIDI clock
-jack_nframes_t g_nFramesSinceLastBeat = 0; // Quantity of frames since last beat
+uint8_t g_nClock = 0;								// Quantity of MIDI clocks since start of beat
+uint8_t g_nMidiClock = 0;							// Quantity of *RECEIVED* MIDI clocks since start of beat
+uint8_t g_nClockSource = TRANSPORT_CLOCK_INTERNAL;	// Source of clock that progresses playback
+bool g_bSendMidiClock = false;						// True to send MIDI clock
+jack_nframes_t g_nFramesSinceLastBeat = 0;			// Quantity of frames since last beat
+
+float g_fSwingAmount = 0.0;							// Swing amount, range from 0 to 1, but values over 0.5 are not "MPC swing"
+float g_fHumanTime = 0.0;							// Timing Humanization, range from 0 to FLOAT_MAX
+float g_fHumanVelo = 0.0;							// Velocity Humanization, range from 0 to FLOAT_MAX
+float g_fPlayChance = 1.0;							// Probability for playing notes (0 = Notes are not played, 0.5 = Notes plays with prob.50%, 1 = All notes play always)
 
 size_t g_nMetronomePtr = -1; // Position within metronome click wav data
 float g_fMetronomeLevel = 1.0; // Factor to scale metronome level (volume)
@@ -106,7 +111,6 @@ bool g_bMetronome = false; // True to enable metronome
 struct metro_wav_t g_metro_pip;
 struct metro_wav_t g_metro_peep;
 struct metro_wav_t * g_pMetro = &g_metro_pip; // Pointer to the current metronome sound (pip/peep)
-std::vector<Pattern*> g_vPatternSnapshots; // Vector of patterns in undo queue
 
 // ** Internal (non-public) functions  (not delcared in header so need to be in correct order in source file) **
 
@@ -331,8 +335,8 @@ int onJackProcess(jack_nframes_t nFrames, void *pArgs)
     static double dBeatsPerMinute; // Store so that we can check for change and do less maths
     static double dBeatsPerBar; // Store so that we can check for change and do less maths
     static jack_nframes_t nFramerate; // Store so that we can check for change and do less maths
-    static uint32_t nFramesPerPulse;
     static jack_nframes_t nLastBeatFrame = 0; // Frames since jack epoch of last quarter note used to calc tempo of external clock
+	static std::pair<double,double> lastClock;
 
     // Get output buffer that will be processed in this process cycle
     void* pOutputBuffer = jack_port_get_buffer(g_pOutputPort, nFrames);
@@ -344,12 +348,12 @@ int onJackProcess(jack_nframes_t nFrames, void *pArgs)
     jack_default_audio_sample_t *pOutMetronome = (jack_default_audio_sample_t*)jack_port_get_buffer(g_pMetronomePort, nFrames);
     memset(pOutMetronome, 0, sizeof(jack_default_audio_sample_t) * nFrames);
 
-
     // Process MIDI input
     void* pInputBuffer = jack_port_get_buffer(g_pInputPort, nFrames);
     jack_midi_event_t midiEvent;
     jack_nframes_t nCount = jack_midi_get_event_count(pInputBuffer);
     Pattern* pPattern = g_seqMan.getPattern(g_nPattern);
+    //Track* pTrack = g_pSequence->getTrack(g_pSequence->m_nCurrentTrack);
     while(g_bMutex)
         std::this_thread::sleep_for(std::chrono::microseconds(10));
     g_bMutex = true;
@@ -417,65 +421,77 @@ int onJackProcess(jack_nframes_t nFrames, void *pArgs)
         {
             uint32_t nStep = getPatternPlayhead();
             uint8_t nPlayState = g_pSequence->getPlayState();
-            bool bAdvance = false;
-            if(((midiEvent.buffer[0] & 0xF0) == 0xB0) && midiEvent.buffer[1] == 64)
-            {
-                // Sustain pedal event
-                if(midiEvent.buffer[2] > 63)
-                    g_bSustain = true;
-                else
-                {
-                    g_bSustain = false;
-                    bAdvance = true;
-                }
-            }
-            else if(((midiEvent.buffer[0] & 0xF0) == 0x90) && midiEvent.buffer[2])
-            {
-                // Note on event
-                if(nPlayState)
-                {
-                    startEvents[midiEvent.buffer[1]].start = nStep;
-                    startEvents[midiEvent.buffer[1]].velocity = midiEvent.buffer[2];
-                }
-                else
-                {
-                    setPatternModified(pPattern, true);
-                    uint32_t nDuration = getNoteDuration(nStep, midiEvent.buffer[1]);
-                    if(g_bSustain)
-                        pPattern->addNote(nStep, midiEvent.buffer[1], midiEvent.buffer[2], nDuration + 1);
-                    else
-                    {
-                        bAdvance = true;
-                        if(nDuration)
-                            pPattern->removeNote(nStep, midiEvent.buffer[1]);
-                        else if(midiEvent.buffer[1] != g_nInputRest)
-                            pPattern->addNote(nStep, midiEvent.buffer[1], midiEvent.buffer[2], 1);
+
+			// Real Time Capture (while playing)
+			if (nPlayState) {
+				// Note on event
+				if(((midiEvent.buffer[0] & 0xF0) == 0x90) && midiEvent.buffer[2]) {
+					startEvents[midiEvent.buffer[1]].start = nStep;
+					startEvents[midiEvent.buffer[1]].velocity = midiEvent.buffer[2];
+					// Calculate clock position offset, in steps (from 0.0 to 1.0)
+					float offset = double(g_pSequence->getPlayPosition()) / double(pPattern->getClocksPerStep()) - double(nStep);
+					// Subtract latency delay
+					offset -= double(nFrames) / double(pPattern->getClocksPerStep() * g_dFramesPerClock);
+					// Add event offset relative to last clock
+					//if (lastClock.first) {
+						//offset += double(midiEvent.time + nNow - lastClock.first - nFrames) / double(pPattern->getClocksPerStep() * g_dFramesPerClock);
+					//}
+					if (offset < 0.0) offset = 0;
+
+					// Quantize or not
+					if (pPattern->getQuantizeNotes()) {
+                        if (offset > 0.5) startEvents[midiEvent.buffer[1]].start ++;
+                        startEvents[midiEvent.buffer[1]].offset = 0;
+                    } else {
+                    	startEvents[midiEvent.buffer[1]].offset = offset;
                     }
                 }
-            }
-            else if(((midiEvent.buffer[0] & 0xF0) == 0x90) && midiEvent.buffer[2] == 0 || (midiEvent.buffer[0] & 0xF0) == 0x80)
-            {
                 // Note off event
-                if(nPlayState)
-                {
-                    if(startEvents[midiEvent.buffer[1]].start != -1)
-                    {
-                        double dDur = double(g_pSequence->getPlayPosition()) - startEvents[midiEvent.buffer[1]].start * getClocksPerStep();
-                        if(dDur < 1.0)
-                            dDur = pPattern->getLength() + dDur;
-                        pPattern->addNote(startEvents[midiEvent.buffer[1]].start, midiEvent.buffer[1], startEvents[midiEvent.buffer[1]].velocity, dDur / getClocksPerStep());
-                        startEvents[midiEvent.buffer[1]].start = -1;
-                        setPatternModified(pPattern, true);
-                    }
-                }
-            }
-            if(bAdvance && nPlayState != JackTransportRolling)
-            {
-                if(++nStep >= pPattern->getSteps())
-                    nStep = 0;
-                g_pSequence->setPlayPosition(nStep * getClocksPerStep());
-                //printf("libzynseq advancing to step %d\n", nStep);
-            }
+				else if(((midiEvent.buffer[0] & 0xF0) == 0x90) && midiEvent.buffer[2] == 0 || (midiEvent.buffer[0] & 0xF0) == 0x80) {
+					if(startEvents[midiEvent.buffer[1]].start != -1) {
+					    double dDur = double(g_pSequence->getPlayPosition()) - startEvents[midiEvent.buffer[1]].start * getClocksPerStep();
+					    if(dDur < 1.0)
+							dDur = pPattern->getLength() + dDur;
+						pPattern->addNote(startEvents[midiEvent.buffer[1]].start, midiEvent.buffer[1], startEvents[midiEvent.buffer[1]].velocity, dDur / getClocksPerStep(), startEvents[midiEvent.buffer[1]].offset);
+					    startEvents[midiEvent.buffer[1]].start = -1;
+					    setPatternModified(pPattern, true, false);
+				    }
+				}
+			}
+			// Step capture
+			else {
+				bool bAdvance = false;
+				// Use sustain pedal for advance step
+				if (((midiEvent.buffer[0] & 0xF0) == 0xB0) && midiEvent.buffer[1] == 64) {
+					if(midiEvent.buffer[2] > 63)
+						g_bSustain = true;
+					else {
+						g_bSustain = false;
+						bAdvance = true;
+					}
+				}
+			    // Note on event
+			    else if (((midiEvent.buffer[0] & 0xF0) == 0x90) && midiEvent.buffer[2]) {
+					setPatternModified(pPattern, true, false);
+					uint32_t nDuration = getNoteDuration(nStep, midiEvent.buffer[1]);
+					if (g_bSustain)
+						pPattern->addNote(nStep, midiEvent.buffer[1], midiEvent.buffer[2], nDuration + 1);
+					else {
+						bAdvance = true;
+						if (nDuration)
+							pPattern->removeNote(nStep, midiEvent.buffer[1]);
+						else if(midiEvent.buffer[1] != g_nInputRest)
+							pPattern->addNote(nStep, midiEvent.buffer[1], midiEvent.buffer[2], 1);
+					}
+				}
+			    // Advance step
+			    if (bAdvance && nState != JackTransportRolling) {
+					if (++nStep >= pPattern->getSteps())
+						nStep = 0;
+					g_pSequence->setPlayPosition(nStep * getClocksPerStep());
+					//printf("libzynseq advancing to step %d\n", nStep);
+				}
+			}
         }
     }
 
@@ -577,29 +593,30 @@ int onJackProcess(jack_nframes_t nFrames, void *pArgs)
                 g_bMutex = false;
                 return 0; // Must have bumped beyond end of this frame time so must wait until next frame - earlier events were processed and pointer nulled so will not trigger in next period
             }
-            // Get a pointer to the next available bytes in the output buffer
-            size_t nSize = 1;
-            if(it->second->command < 0xF4)
-            {
-                uint8_t nType = it->second->command;
-                if(nType < 0xF0)
-                    nType &= 0xF0;
-                switch(nType) {
-                    case MIDI_PROGRAM:
-                    case MIDI_CHAN_PRESSURE:
-                    case MIDI_TIMECODE:
-                    case MIDI_SONG:
-                        nSize = 2;
-                        break;
-                    default:
-                        nSize = 3;
-                }
-            }
-            pBuffer = jack_midi_event_reserve(pOutputBuffer, nTime, nSize);
-            if(pBuffer == NULL)
-                break; // Exceeded buffer size (or other issue)
             if(it->second)
             {
+				// Get a pointer to the next available bytes in the output buffer
+				size_t nSize = 1;
+				if(it->second->command < 0xF4)
+				{
+					uint8_t nType = it->second->command;
+					if(nType < 0xF0)
+						nType &= 0xF0;
+					switch(nType) {
+						case MIDI_PROGRAM:
+						case MIDI_CHAN_PRESSURE:
+						case MIDI_TIMECODE:
+						case MIDI_SONG:
+							nSize = 2;
+							break;
+						default:
+							nSize = 3;
+					}
+				}
+				pBuffer = jack_midi_event_reserve(pOutputBuffer, nTime, nSize);
+				if(pBuffer == NULL)
+					break; // Exceeded buffer size (or other issue)
+
                 pBuffer[0] = it->second->command;
                 if(nSize > 1)
                     pBuffer[1] = it->second->value1;
@@ -657,7 +674,6 @@ void init(char* name) {
     g_metro_pip.size = sizeof(metronome_pip) / sizeof(float);
     g_metro_peep.data = metronome_peep;
     g_metro_peep.size = sizeof(metronome_peep) / sizeof(float);
-
 
     // Register with Jack server
     //fprintf(stderr, "**zynseq initialising as %s**\n", name);
@@ -745,6 +761,14 @@ int fileWrite16(uint16_t value, FILE *pFile)
     return 2;
 }
 
+int fileWriteBCD(float v, FILE *f) {
+	uint16_t nUnits = uint16_t(v);
+	uint16_t nDecimal = uint16_t((v - nUnits) * 10000);
+	int nPos = fileWrite16(nDecimal, f); // fractional (BCD)
+	nPos += fileWrite16(nUnits, f); // integral (BCD)
+	return nPos;
+}
+
 uint8_t fileRead8(FILE* pFile)
 {
     uint8_t nResult = 0;
@@ -774,6 +798,10 @@ uint32_t fileRead32(FILE* pFile)
         nResult |= nValue << (i * 8);
     }
     return nResult;
+}
+
+float fileReadBCD(FILE *f) {
+	return float(fileRead16(f))/10000 + fileRead16(f);
 }
 
 bool checkBlock(FILE* pFile, uint32_t nActualSize,  uint32_t nExpectedSize)
@@ -828,45 +856,75 @@ bool load(const char* filename)
         }
         else if(memcmp(sHeader, "patn", 4) == 0)
         {
-            if(nVersion == 4)
-            {
-            if(checkBlock(pFile, nBlockSize, 12))
-                continue;
+            if(nVersion > 8) {
+                if(checkBlock(pFile, nBlockSize, 32))
+                    continue;
             }
-            else
-            {
-                if(checkBlock(pFile, nBlockSize, 14))
+            else if(nVersion > 4) {
+            	if (checkBlock(pFile, nBlockSize, 14))
+                	continue;
+            }
+            else {
+                if(checkBlock(pFile, nBlockSize, 12))
                     continue;
             }
             uint32_t nPattern = fileRead32(pFile);
             Pattern* pPattern = g_seqMan.getPattern(nPattern);
+            pPattern->clear();
+            pPattern->resetSnapshots();
             pPattern->setBeatsInPattern(fileRead32(pFile));
             pPattern->setStepsPerBeat(fileRead16(pFile));
             pPattern->setScale(fileRead8(pFile));
             pPattern->setTonic(fileRead8(pFile));
-            if(nVersion >=5)
-            {
+            if (nVersion > 4) {
                 pPattern->setRefNote(fileRead8(pFile));
+                nBlockSize -= 1;
+            }
+            if (nVersion > 8) {
+                pPattern->setQuantizeNotes(fileRead8(pFile));
+                pPattern->setSwingDiv(fileRead8(pFile));
+                pPattern->setSwingAmount(fileReadBCD(pFile));
+                pPattern->setHumanTime(fileReadBCD(pFile));
+                pPattern->setHumanVelo(fileReadBCD(pFile));
+                pPattern->setPlayChance(fileReadBCD(pFile));
+                nBlockSize -= 18;
+            }
+            if (nVersion > 4) {
                 fileRead8(pFile);
-                nBlockSize -= 2;
+                nBlockSize -= 1;
             }
             nBlockSize -= 12;
             //printf("Pattern:%u Beats:%u StepsPerBeat:%u Scale:%u Tonic:%u\n", nPattern, pPattern->getBeatsInPattern(), pPattern->getStepsPerBeat(), pPattern->getScale(), pPattern->getTonic());
             while(nBlockSize)
             {
-                if(checkBlock(pFile, nBlockSize, 14))
-                    break;
+            	if (nVersion > 8) {
+                	if(checkBlock(pFile, nBlockSize, 21))
+                    	break;
+            	} else if (nVersion > 7) {
+                	if(checkBlock(pFile, nBlockSize, 16))
+                    	break;
+            	} else {
+                	if(checkBlock(pFile, nBlockSize, 14))
+                    	break;
+                }
                 uint32_t nStep = fileRead32(pFile);
-                float fDuration = float(fileRead16(pFile))/100 + fileRead16(pFile); // fractional + integral (BCD)
+                float fDuration, fOffset;
+                if (nVersion > 8) {
+                	fOffset = fileReadBCD(pFile);
+                	fDuration = fileReadBCD(pFile);
+                	nBlockSize -= 4;
+                } else {
+                	fOffset = 0;
+                	fDuration = float(fileRead16(pFile))/100 + fileRead16(pFile); // fractional + integral (BCD)
+                }
                 uint8_t nCommand = fileRead8(pFile);
                 uint8_t nValue1start = fileRead8(pFile);
                 uint8_t nValue2start = fileRead8(pFile);
                 uint8_t nValue1end = fileRead8(pFile);
                 uint8_t nValue2end = fileRead8(pFile);
-                StepEvent* pEvent = pPattern->addEvent(nStep, nCommand, nValue1start, nValue2start, fDuration);
+                StepEvent* pEvent = pPattern->addEvent(nStep, nCommand, nValue1start, nValue2start, fDuration, fOffset);
                 pEvent->setValue1end(nValue1end);
                 pEvent->setValue2end(nValue2end);
-                nBlockSize -= 14;
                 if(nVersion > 7)
                 {
                     uint8_t nStutterCount = fileRead8(pFile);
@@ -875,9 +933,16 @@ bool load(const char* filename)
                     pEvent->setStutterDur(nStutterDur);
                     nBlockSize -= 2;
                 }
+                if (nVersion > 8) {
+                    uint8_t nPlayChance = fileRead8(pFile);
+                    pEvent->setPlayChance(nPlayChance);
+                    nBlockSize -= 1;
+                }
                 fileRead8(pFile); // Padding
+                nBlockSize -= 14;
                 //printf(" Step:%u Duration:%u Command:%02X, Value1:%u..%u, Value2:%u..%u\n", nTime, nDuration, nCommand, nValue1start, nValue2end, nValue2start, nValue2end);
             }
+            pPattern->resetSnapshots();
         }
         else if(memcmp(sHeader, "bank", 4) == 0)
         {
@@ -891,9 +956,9 @@ bool load(const char* filename)
             //printf("Bank %u with %u sequences\n", nBank, nSequences);
             for(uint32_t nSequence = 0; nSequence < nSequences; ++nSequence)
             {
-                if(checkBlock(pFile, nBlockSize, 8))
+                if(nVersion > 5 && checkBlock(pFile, nBlockSize, 24))
                     continue;
-                if(nVersion >= 6 && checkBlock(pFile, nBlockSize, 24))
+                else if(checkBlock(pFile, nBlockSize, 8))
                     continue;
                 Sequence* pSequence = g_seqMan.getSequence(nBank, nSequence);
                 pSequence->setPlayMode(fileRead8(pFile));
@@ -903,7 +968,7 @@ bool load(const char* filename)
                 fileRead8(pFile); //Padding
                 char sName[17];
                 memset(sName, '\0', 17);
-                if(nVersion >= 6)
+                if(nVersion > 5)
                 {
                     if(checkBlock(pFile, nBlockSize, 24))
                         continue;
@@ -996,21 +1061,25 @@ bool load_pattern(uint32_t nPattern, const char* filename)
                 DPRINTF("Unsupported pattern file version %d. Not loading file.\n", nVersion);
                 return false;
             }
-            g_nBeatsPerBar = fileRead16(pFile);
-            g_nVerticalZoom = fileRead16(pFile);
-            g_nHorizontalZoom = fileRead16(pFile);
+            // Loaded from file but not used!
+            // g_nBeatsPerBar, g_nVerticalZoom, g_nHorizontalZoom
+            fileRead16(pFile);
+            fileRead16(pFile);
+            fileRead16(pFile);
             //printf("Version:%u Beats per bar:%u Zoom V:%u H:%u\n", nVersion, g_nBeatsPerBar, g_nVerticalZoom, g_nHorizontalZoom);
         }
         else if(memcmp(sHeader, "patn", 4) == 0)
         {
-            if(nVersion == 4)
-            {
-            if(checkBlock(pFile, nBlockSize, 12))
-                continue;
+            if(nVersion > 8) {
+                if(checkBlock(pFile, nBlockSize, 28))
+                    continue;
             }
-            else
-            {
-                if(checkBlock(pFile, nBlockSize, 14))
+            else if(nVersion > 4) {
+            	if (checkBlock(pFile, nBlockSize, 10))
+                	continue;
+            }
+            else {
+                if(checkBlock(pFile, nBlockSize, 8))
                     continue;
             }
             Pattern* pPattern = g_seqMan.getPattern(nPattern);
@@ -1019,40 +1088,72 @@ bool load_pattern(uint32_t nPattern, const char* filename)
             pPattern->setStepsPerBeat(fileRead16(pFile));
             pPattern->setScale(fileRead8(pFile));
             pPattern->setTonic(fileRead8(pFile));
-            if(nVersion >=5)
-            {
+            if (nVersion > 4) {
                 pPattern->setRefNote(fileRead8(pFile));
+                nBlockSize -= 1;
+            }
+            if (nVersion > 8) {
+                pPattern->setQuantizeNotes(fileRead8(pFile));
+                pPattern->setSwingDiv(fileRead8(pFile));
+                pPattern->setSwingAmount(fileReadBCD(pFile));
+                pPattern->setHumanTime(fileReadBCD(pFile));
+                pPattern->setHumanVelo(fileReadBCD(pFile));
+                pPattern->setPlayChance(fileReadBCD(pFile));
+                nBlockSize -= 18;
+            }
+            if (nVersion > 4) {
                 fileRead8(pFile);
-                nBlockSize -= 2;
+                nBlockSize -= 1;
             }
             nBlockSize -= 8;
             //printf("Pattern:%u Beats:%u StepsPerBeat:%u Scale:%u Tonic:%u\n", nPattern, pPattern->getBeatsInPattern(), pPattern->getStepsPerBeat(), pPattern->getScale(), pPattern->getTonic());
             while(nBlockSize)
             {
-                if(checkBlock(pFile, nBlockSize, 14))
-                    break;
+            	if (nVersion > 8) {
+                	if(checkBlock(pFile, nBlockSize, 21))
+                    	break;
+            	} else if (nVersion > 7) {
+                	if(checkBlock(pFile, nBlockSize, 16))
+                    	break;
+            	} else {
+                	if(checkBlock(pFile, nBlockSize, 14))
+                    	break;
+                }
                 uint32_t nStep = fileRead32(pFile);
-                float fDuration = float(fileRead16(pFile))/100 + fileRead16(pFile); // fractional + integral (BCD)
+                float fDuration, fOffset;
+                if (nVersion > 8) {
+                	fOffset = fileReadBCD(pFile);
+                	fDuration = fileReadBCD(pFile);
+                	nBlockSize -= 4;
+                } else {
+                	fOffset = 0;
+                	fDuration = float(fileRead16(pFile))/100 + fileRead16(pFile); // fractional + integral (BCD)
+                }
                 uint8_t nCommand = fileRead8(pFile);
                 uint8_t nValue1start = fileRead8(pFile);
                 uint8_t nValue2start = fileRead8(pFile);
                 uint8_t nValue1end = fileRead8(pFile);
                 uint8_t nValue2end = fileRead8(pFile);
-                StepEvent* pEvent = pPattern->addEvent(nStep, nCommand, nValue1start, nValue2start, fDuration);
+                StepEvent* pEvent = pPattern->addEvent(nStep, nCommand, nValue1start, nValue2start, fDuration, fOffset);
                 pEvent->setValue1end(nValue1end);
                 pEvent->setValue2end(nValue2end);
-                nBlockSize -= 14;
-                if(nVersion > 7)
-                {
+                if (nVersion > 7) {
                     uint8_t nStutterCount = fileRead8(pFile);
                     uint8_t nStutterDur = fileRead8(pFile);
                     pEvent->setStutterCount(nStutterCount);
                     pEvent->setStutterDur(nStutterDur);
                     nBlockSize -= 2;
                 }
+                if (nVersion > 8) {
+                    uint8_t nPlayChance = fileRead8(pFile);
+                    pEvent->setPlayChance(nPlayChance);
+                    nBlockSize -= 1;
+                }
                 fileRead8(pFile); // Padding
+                nBlockSize -= 14;
                 //printf(" Step:%u Duration:%u Command:%02X, Value1:%u..%u, Value2:%u..%u\n", nTime, nDuration, nCommand, nValue1start, nValue2end, nValue2start, nValue2end);
             }
+            pPattern->resetSnapshots();
         }
     }
     fclose(pFile);
@@ -1102,16 +1203,23 @@ void save(const char* filename)
             nPos += fileWrite8(pPattern->getScale(), pFile);
             nPos += fileWrite8(pPattern->getTonic(), pFile);
             nPos += fileWrite8(pPattern->getRefNote(), pFile);
+            nPos += fileWrite8(pPattern->getQuantizeNotes(), pFile);
+            nPos += fileWrite8(pPattern->getSwingDiv(), pFile);
+			nPos += fileWriteBCD(pPattern->getSwingAmount(), pFile);
+			nPos += fileWriteBCD(pPattern->getHumanTime(), pFile);
+			nPos += fileWriteBCD(pPattern->getHumanVelo(), pFile);
+			nPos += fileWriteBCD(pPattern->getPlayChance(), pFile);
             nPos += fileWrite8('\0', pFile);
             uint32_t nEvent = 0;
             while(StepEvent* pEvent = pPattern->getEventAt(nEvent++))
             {
+            	// Event Position (step)
                 nPos += fileWrite32(pEvent->getPosition(), pFile);
-                float fDuration = pEvent->getDuration();
-                uint16_t nUnits = uint16_t(fDuration);
-                uint16_t nDecimal = uint16_t((fDuration - nUnits) * 100);
-                nPos += fileWrite16(nDecimal, pFile); // fractional (BCD)
-                nPos += fileWrite16(nUnits, pFile); // integral (BCD)
+				// Offset as BCD
+                nPos += fileWriteBCD(pEvent->getOffset(), pFile);
+				// Duration as BCD
+				nPos += fileWriteBCD(pEvent->getDuration(), pFile);
+				// 1 byte values
                 nPos += fileWrite8(pEvent->getCommand(), pFile);
                 nPos += fileWrite8(pEvent->getValue1start(), pFile);
                 nPos += fileWrite8(pEvent->getValue2start(), pFile);
@@ -1119,6 +1227,7 @@ void save(const char* filename)
                 nPos += fileWrite8(pEvent->getValue2end(), pFile);
                 nPos += fileWrite8(pEvent->getStutterCount(), pFile);
                 nPos += fileWrite8(pEvent->getStutterDur(), pFile);
+                nPos += fileWrite8(pEvent->getPlayChance(), pFile);
                 nPos += fileWrite8('\0', pFile); // Pad to even block (could do at end but simplest here)
             }
             nBlockSize = nPos - nStartOfBlock;
@@ -1247,16 +1356,23 @@ void save_pattern(uint32_t nPattern, const char* filename)
 	nPos += fileWrite8(pPattern->getScale(), pFile);
 	nPos += fileWrite8(pPattern->getTonic(), pFile);
 	nPos += fileWrite8(pPattern->getRefNote(), pFile);
+	nPos += fileWrite8(pPattern->getQuantizeNotes(), pFile);
+	nPos += fileWrite8(pPattern->getSwingDiv(), pFile);
+	nPos += fileWriteBCD(pPattern->getSwingAmount(), pFile);
+	nPos += fileWriteBCD(pPattern->getHumanTime(), pFile);
+	nPos += fileWriteBCD(pPattern->getHumanVelo(), pFile);
+	nPos += fileWriteBCD(pPattern->getPlayChance(), pFile);
 	nPos += fileWrite8('\0', pFile);
 	uint32_t nEvent = 0;
 	while(StepEvent* pEvent = pPattern->getEventAt(nEvent++))
 	{
+		// Event Position (step)
 		nPos += fileWrite32(pEvent->getPosition(), pFile);
-		float fDuration = pEvent->getDuration();
-		uint16_t nUnits = uint16_t(fDuration);
-		uint16_t nDecimal = uint16_t((fDuration - nUnits) * 100);
-		nPos += fileWrite16(nDecimal, pFile); // fractional (BCD)
-		nPos += fileWrite16(nUnits, pFile); // integral (BCD)
+		// Offset as BCD
+		nPos += fileWriteBCD(pEvent->getOffset(), pFile);
+		// Duration as BCD
+		nPos += fileWriteBCD(pEvent->getDuration(), pFile);
+		// 1 byte values
 		nPos += fileWrite8(pEvent->getCommand(), pFile);
 		nPos += fileWrite8(pEvent->getValue1start(), pFile);
 		nPos += fileWrite8(pEvent->getValue2start(), pFile);
@@ -1264,6 +1380,7 @@ void save_pattern(uint32_t nPattern, const char* filename)
 		nPos += fileWrite8(pEvent->getValue2end(), pFile);
 		nPos += fileWrite8(pEvent->getStutterCount(), pFile);
 		nPos += fileWrite8(pEvent->getStutterDur(), pFile);
+		nPos += fileWrite8(pEvent->getPlayChance(), pFile);
 		nPos += fileWrite8('\0', pFile); // Pad to even block (could do at end but simplest here)
 	}
 	nBlockSize = nPos - nStartOfBlock;
@@ -1273,26 +1390,28 @@ void save_pattern(uint32_t nPattern, const char* filename)
     fclose(pFile);
 }
 
-void snapshotPattern() {
-    Pattern* pPattern = g_seqMan.getPattern(g_nPattern);
-    g_vPatternSnapshots.push_back(pPattern = new Pattern(pPattern));
+void savePatternSnapshot() {
+    g_seqMan.getPattern(g_nPattern)->saveSnapshot();
 }
 
-void resetPatternSnapshot() {
-    for(auto it = g_vPatternSnapshots.begin(); it != g_vPatternSnapshots.end(); ++it)
-        delete(*it);
-    g_vPatternSnapshots.clear();
+void resetPatternSnapshots() {
+	g_seqMan.getPattern(g_nPattern)->resetSnapshots();
 }
 
-void undoPattern() {
-    if(g_vPatternSnapshots.size()) {
-        Pattern* pPattern = g_vPatternSnapshots.back();
-        g_seqMan.replacePattern(g_nPattern, pPattern);
-        if(g_vPatternSnapshots.size() > 1) {
-            delete(pPattern);
-            g_vPatternSnapshots.pop_back();
-        }
-    }
+bool undoPattern() {
+	return g_seqMan.getPattern(g_nPattern)->undo();
+}
+
+bool redoPattern() {
+	return g_seqMan.getPattern(g_nPattern)->redo();
+}
+
+bool undoPatternAll() {
+	return g_seqMan.getPattern(g_nPattern)->undoAll();
+}
+
+bool redoPatternAll() {
+	return g_seqMan.getPattern(g_nPattern)->redoAll();
 }
 
 uint16_t getVerticalZoom()
@@ -1498,7 +1617,7 @@ bool isMidiRecord()
 void selectPattern(uint32_t pattern)
 {
     g_nPattern = pattern;
-    setPatternModified(g_seqMan.getPattern(g_nPattern), true);
+    setPatternModified(g_seqMan.getPattern(g_nPattern), true, true);
     addPattern(0, 0, 0, 0, g_nPattern, true);
 }
 
@@ -1541,7 +1660,7 @@ void setBeatsInPattern(uint32_t beats)
         return;
     g_seqMan.getPattern(g_nPattern)->setBeatsInPattern(beats);
     g_seqMan.updateAllSequenceLengths();
-    setPatternModified(g_seqMan.getPattern(g_nPattern), true);
+    setPatternModified(g_seqMan.getPattern(g_nPattern), true, true);
     g_bDirty = true;
 }
 
@@ -1564,16 +1683,86 @@ void setStepsPerBeat(uint32_t steps)
     if(!g_seqMan.getPattern(g_nPattern))
         return;
     g_seqMan.getPattern(g_nPattern)->setStepsPerBeat(steps);
-    setPatternModified(g_seqMan.getPattern(g_nPattern), true);
+    setPatternModified(g_seqMan.getPattern(g_nPattern), true, true);
     g_bDirty = true;
 }
 
-bool addNote(uint32_t step, uint8_t note, uint8_t velocity, float duration)
+uint32_t getSwingDiv() {
+    if(g_seqMan.getPattern(g_nPattern))
+        return g_seqMan.getPattern(g_nPattern)->getSwingDiv();
+    return 1;
+}
+
+void setSwingDiv(uint32_t div) {
+    if(!g_seqMan.getPattern(g_nPattern))
+        return;
+    g_seqMan.getPattern(g_nPattern)->setSwingDiv(div);
+    //setPatternModified(g_seqMan.getPattern(g_nPattern), true, false);
+    g_bDirty = true;
+}
+
+float getSwingAmount() {
+    if(g_seqMan.getPattern(g_nPattern))
+        return g_seqMan.getPattern(g_nPattern)->getSwingAmount();
+    return 0.0;
+}
+
+void setSwingAmount(float amount) {
+    if(!g_seqMan.getPattern(g_nPattern))
+        return;
+    g_seqMan.getPattern(g_nPattern)->setSwingAmount(amount);
+    //setPatternModified(g_seqMan.getPattern(g_nPattern), true, false);
+    g_bDirty = true;
+}
+
+float getHumanTime() {
+    if(g_seqMan.getPattern(g_nPattern))
+        return g_seqMan.getPattern(g_nPattern)->getHumanTime();
+    return 0.0;
+}
+
+void setHumanTime(float amount) {
+    if(!g_seqMan.getPattern(g_nPattern))
+        return;
+    g_seqMan.getPattern(g_nPattern)->setHumanTime(amount);
+    //setPatternModified(g_seqMan.getPattern(g_nPattern), true, false);
+    g_bDirty = true;
+}
+
+float getHumanVelo() {
+    if(g_seqMan.getPattern(g_nPattern))
+        return g_seqMan.getPattern(g_nPattern)->getHumanVelo();
+    return 0.0;
+}
+
+void setHumanVelo(float amount) {
+    if(!g_seqMan.getPattern(g_nPattern))
+        return;
+    g_seqMan.getPattern(g_nPattern)->setHumanVelo(amount);
+    //setPatternModified(g_seqMan.getPattern(g_nPattern), true, false);
+    g_bDirty = true;
+}
+
+float getPlayChance() {
+    if(g_seqMan.getPattern(g_nPattern))
+        return g_seqMan.getPattern(g_nPattern)->getPlayChance();
+    return 0.0;
+}
+
+void setPlayChance(float chance) {
+    if(!g_seqMan.getPattern(g_nPattern))
+        return;
+    g_seqMan.getPattern(g_nPattern)->setPlayChance(chance);
+    //setPatternModified(g_seqMan.getPattern(g_nPattern), true, false);
+    g_bDirty = true;
+}
+
+bool addNote(uint32_t step, uint8_t note, uint8_t velocity, float duration, float offset)
 {
     if(!g_seqMan.getPattern(g_nPattern))
         return false;
-    if(g_seqMan.getPattern(g_nPattern)->addNote(step, note, velocity, duration)) {
-        setPatternModified(g_seqMan.getPattern(g_nPattern), true);
+    if(g_seqMan.getPattern(g_nPattern)->addNote(step, note, velocity, duration, offset)) {
+        setPatternModified(g_seqMan.getPattern(g_nPattern), true, false);
         g_bDirty = true;
         return true;
     }
@@ -1584,7 +1773,7 @@ void removeNote(uint32_t step, uint8_t note)
 {
     if(!g_seqMan.getPattern(g_nPattern))
         return;
-    setPatternModified(g_seqMan.getPattern(g_nPattern), true);
+    setPatternModified(g_seqMan.getPattern(g_nPattern), true, false);
     g_seqMan.getPattern(g_nPattern)->removeNote(step, note);
     g_bDirty = true;
 }
@@ -1607,8 +1796,22 @@ void setNoteVelocity(uint32_t step, uint8_t note, uint8_t velocity)
 {
     if(!g_seqMan.getPattern(g_nPattern))
         return;
-    setPatternModified(g_seqMan.getPattern(g_nPattern), true);
+    setPatternModified(g_seqMan.getPattern(g_nPattern), true, false);
     g_seqMan.getPattern(g_nPattern)->setNoteVelocity(step, note, velocity);
+    g_bDirty = true;
+}
+
+float getNoteOffset(uint32_t step, uint8_t note) {
+    if(g_seqMan.getPattern(g_nPattern))
+        return g_seqMan.getPattern(g_nPattern)->getNoteOffset(step, note);
+    return 0;
+}
+
+void setNoteOffset(uint32_t step, uint8_t note, float offset) {
+    if(!g_seqMan.getPattern(g_nPattern))
+        return;
+    setPatternModified(g_seqMan.getPattern(g_nPattern), true, false);
+    g_seqMan.getPattern(g_nPattern)->setNoteOffset(step, note, offset);
     g_bDirty = true;
 }
 
@@ -1623,7 +1826,7 @@ void setStutterCount(uint32_t step, uint8_t note, uint8_t count)
 {
     if(!g_seqMan.getPattern(g_nPattern))
         return;
-    setPatternModified(g_seqMan.getPattern(g_nPattern), true);
+    setPatternModified(g_seqMan.getPattern(g_nPattern), true, false);
     g_seqMan.getPattern(g_nPattern)->setStutterCount(step, note, count);
     g_bDirty = true;
 }
@@ -1639,8 +1842,24 @@ void setStutterDur(uint32_t step, uint8_t note, uint8_t dur)
 {
     if(!g_seqMan.getPattern(g_nPattern))
         return;
-    setPatternModified(g_seqMan.getPattern(g_nPattern), true);
+    setPatternModified(g_seqMan.getPattern(g_nPattern), true, false);
     g_seqMan.getPattern(g_nPattern)->setStutterDur(step, note, dur);
+    g_bDirty = true;
+}
+
+uint8_t getNotePlayChance(uint32_t step, uint8_t note)
+{
+    if(g_seqMan.getPattern(g_nPattern))
+        return g_seqMan.getPattern(g_nPattern)->getPlayChance(step, note);
+    return 100;
+}
+
+void setNotePlayChance(uint32_t step, uint8_t note, uint8_t chance)
+{
+    if(!g_seqMan.getPattern(g_nPattern))
+        return;
+    setPatternModified(g_seqMan.getPattern(g_nPattern), true, false);
+    g_seqMan.getPattern(g_nPattern)->setPlayChance(step, note, chance);
     g_bDirty = true;
 }
 
@@ -1656,7 +1875,7 @@ bool addProgramChange(uint32_t step, uint8_t program)
     if(!g_seqMan.getPattern(g_nPattern))
         return false;
     if(g_seqMan.getPattern(g_nPattern)->addProgramChange(step, program)) {
-        setPatternModified(g_seqMan.getPattern(g_nPattern), true);
+        setPatternModified(g_seqMan.getPattern(g_nPattern), true, false);
         g_bDirty = true;
         return true;
     }
@@ -1669,7 +1888,7 @@ void removeProgramChange(uint32_t step, uint8_t program)
         return;
     if(g_seqMan.getPattern(g_nPattern)->removeProgramChange(step))
         return;
-    setPatternModified(g_seqMan.getPattern(g_nPattern), true);
+    setPatternModified(g_seqMan.getPattern(g_nPattern), true, false);
     g_bDirty = true;
 }
 
@@ -1684,7 +1903,7 @@ void transpose(int8_t value)
 {
     if(!g_seqMan.getPattern(g_nPattern))
         return;
-    setPatternModified(g_seqMan.getPattern(g_nPattern), true);
+    setPatternModified(g_seqMan.getPattern(g_nPattern), true, false);
     g_seqMan.getPattern(g_nPattern)->transpose(value);
     g_bDirty = true;
 }
@@ -1693,7 +1912,7 @@ void changeVelocityAll(int value)
 {
     if(!g_seqMan.getPattern(g_nPattern))
         return;
-    setPatternModified(g_seqMan.getPattern(g_nPattern), true);
+    setPatternModified(g_seqMan.getPattern(g_nPattern), true, false);
     g_seqMan.getPattern(g_nPattern)->changeVelocityAll(value);
     g_bDirty = true;
 }
@@ -1702,7 +1921,7 @@ void changeDurationAll(float value)
 {
     if(!g_seqMan.getPattern(g_nPattern))
         return;
-    setPatternModified(g_seqMan.getPattern(g_nPattern), true);
+    setPatternModified(g_seqMan.getPattern(g_nPattern), true, false);
     g_seqMan.getPattern(g_nPattern)->changeDurationAll(value);
     g_bDirty = true;
 }
@@ -1711,7 +1930,7 @@ void changeStutterCountAll(int value)
 {
     if(!g_seqMan.getPattern(g_nPattern))
         return;
-    setPatternModified(g_seqMan.getPattern(g_nPattern), true);
+    setPatternModified(g_seqMan.getPattern(g_nPattern), true, false);
     g_seqMan.getPattern(g_nPattern)->changeStutterCountAll(value);
     g_bDirty = true;
 }
@@ -1720,17 +1939,18 @@ void changeStutterDurAll(int value)
 {
     if(!g_seqMan.getPattern(g_nPattern))
         return;
-    setPatternModified(g_seqMan.getPattern(g_nPattern), true);
+    setPatternModified(g_seqMan.getPattern(g_nPattern), true, false);
     g_seqMan.getPattern(g_nPattern)->changeStutterDurAll(value);
     g_bDirty = true;
 }
 
 void clear()
 {
-    if(!g_seqMan.getPattern(g_nPattern))
+    if (!g_seqMan.getPattern(g_nPattern))
         return;
-    setPatternModified(g_seqMan.getPattern(g_nPattern), true);
+    setPatternModified(g_seqMan.getPattern(g_nPattern), true, false);
     g_seqMan.getPattern(g_nPattern)->clear();
+    //g_seqMan.getPattern(g_nPattern)->resetSnapshots();
     g_bDirty = true;
 }
 
@@ -1784,9 +2004,9 @@ uint8_t getTonic()
     return 0;
 }
 
-void setPatternModified(Pattern* pPattern, bool bModified)
+void setPatternModified(Pattern* pPattern, bool bModified, bool bModifiedTracks)
 {
-    if(bModified)
+    if(bModified && bModifiedTracks)
     {
         for(uint32_t nBank = 1; nBank < g_seqMan.getBanks(); ++nBank)
         {
@@ -1836,6 +2056,17 @@ void setRefNote(uint8_t note)
 {
     if(g_seqMan.getPattern(g_nPattern))
         g_seqMan.getPattern(g_nPattern)->setRefNote(note);
+}
+
+bool getQuantizeNotes() {
+    if(g_seqMan.getPattern(g_nPattern))
+        return g_seqMan.getPattern(g_nPattern)->getQuantizeNotes();
+    return false;
+}
+
+void setQuantizeNotes(bool flag) {
+    if(g_seqMan.getPattern(g_nPattern))
+        g_seqMan.getPattern(g_nPattern)->setQuantizeNotes(flag);
 }
 
 uint32_t getLastStep()
