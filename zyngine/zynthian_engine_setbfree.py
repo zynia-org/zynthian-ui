@@ -91,6 +91,7 @@ class zynthian_engine_setbfree(zynthian_engine):
 	manual_ctrls = [
 		[
 			['volume', 7, 96, 127],
+			['expression', 11, 127, 127],
 			# ['swellpedal 2', 11, 96],
 			['reverb', 91, 4, 127],
 			['convol. mix', 94, 64, 127],
@@ -576,15 +577,6 @@ class zynthian_engine_setbfree(zynthian_engine):
 				lib_zyncore.zmop_send_ccontrol_change(izmop, mchan, zctrl.midi_cc, mval)
 		except Exception as err:
 			logging.error(err)
-
-	def midi_zctrl_change(self, zctrl, val):
-		try:
-			if val != zctrl.get_value():
-				zctrl.set_value(val)
-				#logging.debug(f"MIDI CC {zctrl.midi_cc} -> '{zctrl.name}' = {val}")
-
-		except Exception as e:
-			logging.debug(e)
 
 	# ----------------------------------------------------------------------------
 	# Specific functionality

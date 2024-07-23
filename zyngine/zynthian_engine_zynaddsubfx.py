@@ -23,13 +23,12 @@
 # ******************************************************************************
 
 import os
-import re
-import logging
-import liblo
 import shutil
+import logging
 from time import sleep
 from os.path import isfile, join
 from subprocess import check_output
+
 from . import zynthian_engine
 from zynconf import ServerPort
 from zyncoder.zyncore import lib_zyncore
@@ -268,6 +267,23 @@ class zynthian_engine_zynaddsubfx(zynthian_engine):
 		except:
 			return False
 
+	# ----------------------------------------------------------------------------
+	# Controller Managament
+	# ----------------------------------------------------------------------------
+
+	def send_controller_value(self, zctrl):
+		try:
+			if self.osc_server and zctrl.osc_path:
+				self.osc_server.send(self.osc_target, zctrl.osc_path, zctrl.get_ctrl_osc_val())
+			else:
+				izmop = zctrl.processor.chain.zmop_index
+				if izmop is not None and izmop >= 0:
+					mchan = zctrl.processor.part_i
+					mval = zctrl.get_ctrl_midi_val()
+					lib_zyncore.zmop_send_ccontrol_change(izmop, mchan, zctrl.midi_cc, mval)
+		except Exception as err:
+			logging.error(err)
+
 	# ---------------------------------------------------------------------------
 	# Specific functions
 	# ---------------------------------------------------------------------------
@@ -303,12 +319,6 @@ class zynthian_engine_zynaddsubfx(zynthian_engine):
 				self.state_manager.end_busy("zynaddsubfx")
 		except Exception as e:
 			logging.warning(e)
-
-	def send_controller_value(self, zctrl):
-		if self.osc_server and zctrl.osc_path:
-			self.osc_server.send(self.osc_target, zctrl.osc_path, zctrl.get_ctrl_osc_val())
-		else:
-			raise Exception("NO OSC CONTROLLER")
 
 	# ---------------------------------------------------------------------------
 	# API methods
@@ -400,7 +410,7 @@ class zynthian_engine_zynaddsubfx(zynthian_engine):
 
 	@classmethod
 	def zynapi_get_formats(cls):
-		return "xiz,zip,tgz,tar.gz,tar.bz2"
+		return "xiz,zip,tgz,tar.gz,tar.bz2,tar.xz"
 
 	@classmethod
 	def zynapi_martifact_formats(cls):

@@ -126,9 +126,13 @@ bool undoPatternAll();
 /** Restore last state of pattern */
 bool redoPatternAll();
 
-/** @brief  Store current pattern on undo queue
-*/
-void snapshotPattern();
+/** Set pattern zoom */
+void setPatternZoom(int16_t zoom);
+
+/** Set pattern zoom */
+int16_t getPatternZoom();
+
+// ** This is not user by Pattern editor anymore. Is this used by arranger? **
 
 /** @brief  Get vertical zoom
 *   @retval uint16_t Vertical zoom
@@ -192,10 +196,14 @@ void sendMidiClock();
 */
 void sendMidiCommand(uint8_t status, uint8_t value1, uint8_t value2);
 
+/** @brief  Return MIDI clock output flag
+*/
+uint8_t getMidiClockOutput();
+
 /** @brief  Enable or disable sending MIDI clock to output
 *   @param  enable True to enable MIDI clock output (Default: true)
 */
-void enableMidiClockOutput(bool enable=true);
+void setMidiClockOutput(bool enable=true);
 
 /** @brief  Get MIDI device used for external trigger of sequences
 *   @retval uint8_t MIDI device index
@@ -655,10 +663,41 @@ void toggleMute(uint8_t bank, uint8_t sequence, uint32_t track);
 */
 bool isMuted(uint8_t bank, uint8_t sequence, uint32_t track);
 
+// ** Sequence & Track management functions **
 
-// ** Sequence management functions **
+/** @brief  Set track type
+*   @param  bank Index of bank
+*   @param  sequence Sequence ID
+*   @param  track Index of track
+*   @param  type Track type: 0 = MIDI Track, 1 = Audio, 2 = MIDI Program
+*/
+void setTrackType(uint8_t bank, uint8_t sequence, uint32_t track, uint8_t type);
 
-/** @brief  Set sequence MIDI channel
+/** @brief  Get track type
+*   @param  bank Index of bank
+*   @param  sequence Index of sequence
+*   @param  track Index of track
+*   @retval uint8_t Track type
+*/
+uint8_t getTrackType(uint8_t bank, uint8_t sequence, uint32_t track);
+
+/** @brief  Set track's associated chain ID
+*   @param  bank Index of bank
+*   @param  sequence Sequence ID
+*   @param  track Index of track
+*   @param  chain_id Chain ID
+*/
+void setChainID(uint8_t bank, uint8_t sequence, uint32_t track, uint8_t chain_id);
+
+/** @brief  Get track's associated chain ID
+*   @param  bank Index of bank
+*   @param  sequence Index of sequence
+*   @param  track Index of track
+*   @retval uint8_t Chain ID
+*/
+uint8_t getChainID(uint8_t bank, uint8_t sequence, uint32_t track);
+
+/** @brief  Set track MIDI channel
 *   @param  bank Index of bank
 *   @param  sequence Sequence ID
 *   @param  track Index of track

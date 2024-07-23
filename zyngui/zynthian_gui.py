@@ -540,7 +540,7 @@ class zynthian_gui:
 		self.state_manager.end_busy("ui startup")
 
 		# Show initial screen
-		self.show_screen(init_screen, self.SCREEN_HMODE_RESET)
+		self.show_screen(init_screen, zynthian_gui.SCREEN_HMODE_RESET)
 
 	def hide_screens(self, exclude=None):
 		if not exclude:
@@ -869,7 +869,7 @@ class zynthian_gui:
 			# TODO: Offer type selection
 			pass
 
-	def chain_control(self, chain_id=None, processor=None):
+	def chain_control(self, chain_id=None, processor=None, hmode=SCREEN_HMODE_RESET):
 		if chain_id is None:
 			chain_id = self.chain_manager.active_chain_id
 		else:
@@ -911,20 +911,20 @@ class zynthian_gui:
 
 			# If a preset is selected => control screen
 			if self.current_processor.get_preset_name():
-				self.show_screen_reset(control_screen_name)
+				self.show_screen(control_screen_name, hmode)
 			# If not => bank/preset selector screen
 			else:
 				if len(self.current_processor.get_bank_list()) > 1:
-					self.show_screen_reset('bank')
+					self.show_screen('bank', hmode)
 				else:
 					self.current_processor.set_bank(0)
 					self.current_processor.load_preset_list()
 					if len(self.current_processor.preset_list) > 1:
-						self.show_screen_reset('preset')
+						self.show_screen('preset', hmode)
 					else:
 						if len(self.current_processor.preset_list):
 							self.current_processor.set_preset(0)
-						self.show_screen_reset(control_screen_name)
+						self.show_screen(control_screen_name, hmode)
 		else:
 			chain = self.chain_manager.get_chain(chain_id)
 			if chain and chain.is_audio():
@@ -1027,6 +1027,9 @@ class zynthian_gui:
 		self.callable_ui_action(cuia, params)
 
 	# System actions CUIA
+	def cuia_nop(self, params):
+		pass
+
 	def cuia_test_mode(self, params):
 		self.test_mode = params
 		logging.warning('TEST_MODE: {}'.format(params))
@@ -1116,9 +1119,13 @@ class zynthian_gui:
 
 	def cuia_audio_file_list(self, params=None):
 		self.show_screen("audio_player")
-		self.show_screen('bank')
-		if len(self.state_manager.audio_player.bank_list) == 1 or self.state_manager.audio_player.bank_name:
+		self.replace_screen('bank')
+		n_banks = len(self.state_manager.audio_player.bank_list)
+		if n_banks == 1 or self.state_manager.audio_player.bank_name:
 			self.screens['bank'].click_listbox()
+		elif n_banks == 0:
+			self.close_screen()
+			self.close_screen()
 
 	def cuia_start_midi_record(self, params=None):
 		self.state_manager.start_midi_record()
@@ -1520,7 +1527,7 @@ class zynthian_gui:
 					return
 			elif i == 1:
 				if t == 'S' or t == 'B':
-					self.screens["pattern_editor"].reset_grid_scale()
+					self.screens["pattern_editor"].reset_grid_zoom()
 					return
 			elif i == 2:
 				if t == 'S' or t == 'B':
@@ -1580,6 +1587,18 @@ class zynthian_gui:
 				lib_zyncore.write_zynmidi_ccontrol_change(chan, cc, int(params[2]))
 
 	# Common methods to control views derived from zynthian_gui_base
+	def cuia_show_cursor(self, params=None):
+		try:
+			zynthian_gui_config.top.config(cursor="arrow")
+		except (AttributeError, TypeError):
+			pass
+
+	def cuia_hide_cursor(self, params=None):
+		try:
+			zynthian_gui_config.top.config(cursor="none")
+		except (AttributeError, TypeError):
+			pass
+
 	def cuia_show_topbar(self, params=None):
 		try:
 			self.screens[self.current_screen].show_topbar(True)
@@ -1703,7 +1722,7 @@ class zynthian_gui:
 	# Init Standard Zynswitches
 	def zynswitches_init(self):
 		logging.info(f"INIT {zynthian_gui_config.num_zynswitches} ZYNSWITCHES ...")
-		self.dtsw = [datetime.now()] * (zynthian_gui_config.num_zynswitches + 4)
+		self.dtsw = [datetime.now()] * zynthian_gui_config.num_zynswitches
 
 	# Initialize custom switches, analog I/O, TOF sensors, etc.
 	def zynswitches_midi_setup(self, current_chain_chan=None):
@@ -1824,7 +1843,7 @@ class zynthian_gui:
 
 		# Standard 4 ZynSwitches
 		if i == 0:
-			self.show_screen_reset("admin")
+			self.cuia_screen_admin()
 			return True
 
 		elif i == 1:
@@ -1833,11 +1852,10 @@ class zynthian_gui:
 
 		elif i == 2:
 			self.cuia_screen_snapshot()
-			#self.show_screen_reset("zynpad")
 			return True
 
 		elif i == 3:
-			self.screens['admin'].power_off()
+			self.cuia_power_off()
 			return True
 
 		# Custom ZynSwitches
@@ -2018,7 +2036,7 @@ class zynthian_gui:
 		if izmip < self.state_manager.get_max_num_midi_devs():
 			# Pattern recording
 			if self.current_screen == 'pattern_editor' and self.state_manager.zynseq.libseq.isMidiRecord():
-				self.screens['pattern_editor'].midi_note(note)
+				self.screens['pattern_editor'].midi_note_on(note)
 			# Preload preset (note-on)
 			elif self.current_screen == 'preset' and zynthian_gui_config.preset_preload_noteon and \
 				(zynautoconnect.get_midi_in_dev_mode(izmip) or chan == self.get_current_processor().get_midi_chan()):
@@ -2042,7 +2060,7 @@ class zynthian_gui:
 		if izmip < self.state_manager.get_max_num_midi_devs():
 			# Pattern recording
 			if self.current_screen == 'pattern_editor' and self.state_manager.zynseq.libseq.isMidiRecord():
-				self.screens['pattern_editor'].midi_note(note)
+				self.screens['pattern_editor'].midi_note_off(note)
 
 	# ------------------------------------------------------------------
 	# Zynpot Thread
@@ -2235,7 +2253,7 @@ class zynthian_gui:
 		Events are passed via cuia_queue and may be a space separated list:'cuia, param, param...' or list: [cuia, [params]]
 		"""
 
-		zynswitch_cuia_ts = [None] * (zynthian_gui_config.num_zynswitches + 4)
+		zynswitch_cuia_ts = [None] * zynthian_gui_config.num_zynswitches
 		zynswitch_repeat = {}
 		zynpot_repeat = {}
 		repeat_delay = 3  # Quantity of repeat intervals to delay before triggering auto repeat
@@ -2244,6 +2262,12 @@ class zynthian_gui:
 		while not self.exit_flag:
 			cuia = "unknown"
 			try:
+				# Check for long press before release
+				long_ts = monotonic() - zynthian_gui_config.zynswitch_long_seconds
+				for i, ts in enumerate(zynswitch_cuia_ts):
+					if ts is not None and ts < long_ts:
+						zynswitch_cuia_ts[i] = None
+						self.zynswitch_long(i)
 				event = self.cuia_queue.get(True, repeat_interval)
 				params = None
 				if isinstance(event, str):
@@ -2268,7 +2292,8 @@ class zynthian_gui:
 						t = params[1]
 						if t == 'R':
 							if zynswitch_cuia_ts[i] is None:
-								del zynswitch_repeat[i]
+								if i in zynswitch_repeat:
+									del zynswitch_repeat[i]
 								continue
 							else:
 								dtus = int(1000000 * (monotonic() - zynswitch_cuia_ts[i]))

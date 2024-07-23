@@ -394,8 +394,9 @@ class zynthian_chain:
             for proc in self.synth_slots[0]:
                 self.midi_routes[proc.engine.jackname] = sources
         elif len(self.midi_slots) == 0 and self.midi_thru:
-            for output in self.midi_out:
-                self.midi_routes[output] = self.midi_in
+            sources = self.midi_in
+        for output in self.midi_out:
+            self.midi_routes[output] = sources
         
         # Feed output of MIDI chain to all audio processors - ideally this should only feed processors with MIDI inputs but it is probably as simple to let autoconnect deal with that.
         for slot in self.audio_slots:
@@ -460,11 +461,15 @@ class zynthian_chain:
     def get_midi_out(self):
         return self.midi_out
 
-    def toggle_midi_out(self, jackname):
-        if jackname not in self.midi_out:
-            self.midi_out.append(jackname)
+    def toggle_midi_out(self, dest):
+        """ Set/unset a MIDI output route
+        dest : destination ID. A jack port name/alias (string) or a chain ID (integer)
+        """
+
+        if dest not in self.midi_out:
+            self.midi_out.append(dest)
         else:
-            self.midi_out.remove(jackname)
+            self.midi_out.remove(dest)
 
         self.rebuild_midi_graph()
         zynautoconnect.request_midi_connect(True)

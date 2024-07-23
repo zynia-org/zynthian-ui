@@ -87,12 +87,13 @@ class zynthian_gui_admin(zynthian_gui_selector):
 			sleep(2)
 
 	def build_view(self):
-		self.state_manager.check_for_updates()
+		self.update_available = self.state_manager.update_available
 		if not self.refresh_wifi_thread:
 			self.refresh_wifi = True
 			self.refresh_wifi_thread = Thread(target=self.refresh_wifi_task, name="wifi_refresh")
 			self.refresh_wifi_thread.start()
 		res = super().build_view()
+		self.state_manager.check_for_updates()
 		return res
 
 	def hide(self):
@@ -187,6 +188,8 @@ class zynthian_gui_admin(zynthian_gui_selector):
 		self.list_data.append((None, 0, "> TEST"))
 		self.list_data.append((self.test_audio, 0, "Test Audio"))
 		self.list_data.append((self.test_midi, 0, "Test MIDI"))
+		if zynthian_gui_config.control_test_enabled:
+			self.list_data.append((self.control_test, 0, "Test control HW"))
 
 		self.list_data.append((None, 0, "> SYSTEM"))
 		if self.zyngui.capture_log_fname:
@@ -522,6 +525,10 @@ class zynthian_gui_admin(zynthian_gui_selector):
 		self.state_manager.start_midi_playback(f"{self.data_dir}/mid/test.mid")
 		self.zyngui.alt_mode = True
 
+	def control_test(self, t='S'):
+		logging.info("TEST CONTROL HARDWARE")
+		self.zyngui.show_screen_reset("control_test")
+
 	# ------------------------------------------------------------------------------
 	# SYSTEM FUNCTIONS
 	# ------------------------------------------------------------------------------
@@ -543,6 +550,7 @@ class zynthian_gui_admin(zynthian_gui_selector):
 		self.zyngui.show_info("UPDATE SOFTWARE")
 		self.start_command([self.sys_dir + "/scripts/update_zynthian.sh"])
 		self.state_manager.update_available = False
+		self.update_available = False
 
 	def update_system(self):
 		logging.info("UPDATE SYSTEM")

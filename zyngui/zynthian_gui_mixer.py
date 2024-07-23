@@ -580,10 +580,10 @@ class zynthian_gui_mixer_strip():
 	# Function to handle fader press
 	# event: Mouse event
 	def on_fader_press(self, event):
+		self.touch_y = event.y
 		if zynthian_gui_config.zyngui.cb_touch(event):
 			return "break"
 
-		self.touch_y = event.y
 		if self.midi_learning is True:
 			self.enable_midi_learn('level')
 		self.fader_drag_start = event
@@ -997,7 +997,7 @@ class zynthian_gui_mixer(zynthian_gui_base.zynthian_gui_base):
 					self.highlighted_strip.toggle_mute()
 				return True
 			elif t == "B":
-				self.zyngui.show_screen('admin')
+				self.zyngui.cuia_screen_zynpad()
 				return True
 
 		elif swi == 2:

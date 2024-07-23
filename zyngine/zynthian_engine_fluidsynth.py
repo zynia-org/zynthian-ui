@@ -160,7 +160,6 @@ class zynthian_engine_fluidsynth(zynthian_engine):
 		if processor.part_i is not None:
 			lib_zyncore.zmop_set_midi_chan_trans(processor.chain.zmop_index, processor.get_midi_chan(), processor.part_i)
 
-
 	# ---------------------------------------------------------------------------
 	# Bank Management
 	# ---------------------------------------------------------------------------
@@ -334,6 +333,16 @@ class zynthian_engine_fluidsynth(zynthian_engine):
 
 		return zctrls
 
+	def send_controller_value(self, zctrl):
+		try:
+			izmop = zctrl.processor.chain.zmop_index
+			if izmop is not None and izmop >= 0:
+				mchan = zctrl.processor.part_i
+				mval = zctrl.get_ctrl_midi_val()
+				lib_zyncore.zmop_send_ccontrol_change(izmop, mchan, zctrl.midi_cc, mval)
+		except Exception as err:
+			logging.error(err)
+
 	# ---------------------------------------------------------------------------
 	# Specific functions
 	# ---------------------------------------------------------------------------
@@ -454,7 +463,7 @@ class zynthian_engine_fluidsynth(zynthian_engine):
 
 	@classmethod
 	def zynapi_get_formats(cls):
-		return "sf2,sf3,zip,tgz,tar.gz,tar.bz2"
+		return "sf2,sf3,zip,tgz,tar.gz,tar.bz2,tar.xz"
 
 	@classmethod
 	def zynapi_martifact_formats(cls):

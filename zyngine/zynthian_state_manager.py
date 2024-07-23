@@ -33,7 +33,7 @@ from queue import SimpleQueue
 from datetime import datetime
 from time import sleep, monotonic
 from json import JSONEncoder, JSONDecoder
-from subprocess import check_output, STDOUT
+from subprocess import check_output, Popen, STDOUT, PIPE
 from os.path import basename, isdir, isfile, join, dirname, splitext
 
 # Zynthian specific modules
@@ -186,17 +186,23 @@ class zynthian_state_manager:
 
         # Sysfs->hwmon monitoring interface
         try:
-            self.hwmon_thermal_file = open('/sys/class/hwmon/hwmon0/temp1_input')
+            sfpath = '/sys/class/hwmon/hwmon0/temp1_input'
+            self.hwmon_thermal_file = open(sfpath)
+            logging.debug(f"Opened temperature sensor '{sfpath}'")
         except:
             self.hwmon_thermal_file = None
             logging.error("Can't access temperature sensor.")
 
+
         try:
-            self.hwmon_undervolt_file = open('/sys/class/hwmon/hwmon1/in0_lcrit_alarm')
+            result = glob("/sys/class/hwmon/**/in0_lcrit_alarm")
+            self.hwmon_undervolt_file = open(result[0])
+            logging.debug(f"Opened undervoltage sensor '{result[0]}'")
         except:
             try:
-                self.hwmon_undervolt_file = open(
-                    '/sys/devices/platform/soc/soc:firmware/raspberrypi-hwmon/hwmon/hwmon2/in0_lcrit_alarm')
+                result = glob("/sys/devices/platform/soc/soc:firmware/raspberrypi-hwmon/hwmon/**/in0_lcrit_alarm')")
+                self.hwmon_undervolt_file = open(result[0])
+                logging.debug(f"Opened undervoltage sensor '{result[0]}'")
             except:
                 self.hwmon_undervolt_file = None
                 logging.error("Can't access undervoltage sensor.")
@@ -950,7 +956,8 @@ class zynthian_state_manager:
             # JSON Encode
             json = JSONEncoder().encode(state)
             with open(fpath, "w") as fh:
-                logging.info("Saving snapshot %s => \n%s" % (fpath, json))
+                logging.info(f"Saving snapshot {fpath} ...")
+                #logging.debug(f"Snapshot JSON Data =>\n{json}")
                 fh.write(json)
                 fh.flush()
                 os.fsync(fh.fileno())
@@ -978,7 +985,8 @@ class zynthian_state_manager:
         try:
             with open(fpath, "r") as fh:
                 json = fh.read()
-                logging.info("Loading snapshot %s => \n%s" % (fpath, json))
+                logging.info(f"Loading snapshot '{fpath}' ...")
+                #logging.debug(f"Snapshot JSON Data =>\n{json}")
         except Exception as e:
             logging.error("Can't load snapshot '%s': %s" % (fpath, e))
             self.end_busy("load snapshot")
@@ -1089,7 +1097,7 @@ class zynthian_state_manager:
             self.set_busy_details("fixing legacy snapshot")
             converter = zynthian_legacy_snapshot.zynthian_legacy_snapshot()
             state = converter.convert_state(snapshot)
-            logging.debug(f"Fixed Snapshot: {state}")
+            #logging.debug(f"Fixed Snapshot: {state}")
         else:
             state = snapshot
             if state["schema_version"] < SNAPSHOT_SCHEMA_VERSION:
@@ -1165,11 +1173,17 @@ class zynthian_state_manager:
         Returns : True on success
         """
 
-        if zs3_id not in self.zs3:
-            logging.info("Attepmted to load non-existant ZS3")
-            return False
-
-        zs3_state = self.zs3[zs3_id]
+        # Try loading exact match
+        try:
+            zs3_state = self.zs3[zs3_id]
+        except:
+            # else ignore MIDI channel => try loading "program change" match
+            try:
+                zs3_id = f"*/{zs3_id.split('/')[1]}"
+                zs3_state = self.zs3[zs3_id]
+            except:
+                logging.info(f"Not found ZS3 matching '{zs3_id}'")
+                return False
 
         restored_chains = []
         restored_cc_mapping = []
@@ -1302,7 +1316,6 @@ class zynthian_state_manager:
                     zs3_id = f"zs3-{index}"
                     break
 
-
         if title is None:
             title = self.midi_learn_pc
 
@@ -1325,10 +1338,10 @@ class zynthian_state_manager:
             }
             if chain.is_midi():
                 note_low = lib_zyncore.zmop_get_note_low(chain.zmop_index)
-                if note_low:
+                if note_low > 0:
                     chain_state["note_low"] = note_low
                 note_high = lib_zyncore.zmop_get_note_high(chain.zmop_index)
-                if note_high != 127:
+                if note_high < 127:
                     chain_state["note_high"] = note_high
                 transpose_octave = lib_zyncore.zmop_get_transpose_octave(chain.zmop_index)
                 if transpose_octave:
@@ -1420,13 +1433,17 @@ class zynthian_state_manager:
     def clean_zs3(self):
         """Remove non-existant processors from ZS3 state"""
         
-        for state in self.zs3:
-            if self.zs3[state]["active_chain"] not in self.chain_manager.chains:
-                self.zs3[state]["active_chain"] = self.chain_manager.active_chain_id
-            if "processors" in self.zs3:
-                for processor_id in list(self.zs3[state]["processors"]):
+        for state in self.zs3.values():
+            if state["active_chain"] not in self.chain_manager.chains:
+                state["active_chain"] = self.chain_manager.active_chain_id
+            if "processors" in state:
+                for processor_id in list(state["processors"]):
                     if processor_id not in self.chain_manager.processors:
-                        del self.zs3[state]["process"][processor_id]
+                        del state["processors"][processor_id]
+            if "chains" in state:
+                for chain_id in list(state["chains"]):
+                    if chain_id not in self.chain_manager.chains:
+                        del state["chains"][chain_id]
 
     # ------------------------------------------------------------------
     # Jackd Info
@@ -1691,6 +1708,46 @@ class zynthian_state_manager:
         self.default_aubionotes()
 
     # -------------------------------------------------------------------
+    # MIDI transport & clock settings
+    # -------------------------------------------------------------------
+
+    def get_transport_clock_source(self):
+        val = self.zynseq.libseq.getClockSource()
+        if val == 5:
+            return 3
+        elif val == 2:
+            return 2
+        elif self.zynseq.libseq.getMidiClockOutput():
+            return 1
+        else:
+            return 0
+
+    def set_transport_clock_source(self, val=None, save_config=False):
+        if val is None:
+            val = zynthian_gui_config.transport_clock_source
+
+        if val == 2:
+            self.zynseq.libseq.setClockSource(2)
+        elif val == 3:
+            self.zynseq.libseq.setClockSource(1 | 4)
+        else:
+            self.zynseq.libseq.setClockSource(1)
+
+        self.zynseq.libseq.setMidiClockOutput(val == 1)
+
+        if val > 0:
+            lib_zyncore.set_midi_system_events(1)
+        else:
+            lib_zyncore.set_midi_system_events(zynthian_gui_config.midi_sys_enabled)
+
+        # Save config
+        if save_config:
+            zynthian_gui_config.transport_clock_source = val
+            zynconf.update_midi_profile({
+                "ZYNTHIAN_MIDI_TRANSPORT_CLOCK_SOURCE": str(int(val))
+            })
+
+    # -------------------------------------------------------------------
     # MIDI profile
     # -------------------------------------------------------------------
 
@@ -1719,6 +1776,7 @@ class zynthian_state_manager:
             zynthian_gui_config.set_midi_config()
             self.init_midi()
             self.init_midi_services()
+            self.set_transport_clock_source()
             zynautoconnect.request_midi_connect()
             return True
 
@@ -2198,20 +2256,38 @@ class zynthian_state_manager:
         else:
             self.stop_touchosc2midi(False)
 
+    def select_bluetooth_controller(self, controller):
+        if controller.count(":") != 5:
+            return
+        proc = Popen('bluetoothctl', stdin=PIPE, stdout=PIPE, stderr=PIPE, encoding='utf-8')
+        for addr in check_output("bluetoothctl list", shell=True, timeout=1, encoding="utf-8").split():
+            if addr.count(":") == 5:
+                proc.stdin.write(f"select {addr}\n")
+                if controller == addr:
+                    proc.stdin.write(f"power on\n")
+                else:
+                    proc.stdin.write(f"power off\n")
+                proc.stdin.flush()
+        proc.stdin.write(f"exit\n")
+        proc.stdin.flush()
+        zynthian_gui_config.ble_controller = controller
+        zynconf.update_midi_profile({
+            "ZYNTHIAN_MIDI_BLE_CONTROLLER": zynthian_gui_config.ble_controller
+        })
+
     def start_bluetooth(self, save_config=True, wait=0):
         service = "bluetooth"
         if zynconf.is_service_active(service):
             zynthian_gui_config.bluetooth_enabled = 1
+            self.select_bluetooth_controller(zynthian_gui_config.ble_controller)
             return
         self.start_busy("start_bluetooth", "starting Bluetooth")
         logging.info("STARTING Bluetooth")
         try:
             check_output(f"systemctl start {service}", shell=True, timeout=2)
             sleep(wait)
-            check_output("bluetoothctl power on", shell=True, timeout=1)
-            check_output("bluetoothctl agent off", shell=True, timeout=1)
-            check_output("bluetoothctl agent NoInputNoOutput", shell=True, timeout=1)
             zynthian_gui_config.bluetooth_enabled = 1
+            self.select_bluetooth_controller(zynthian_gui_config.ble_controller)
             # Update MIDI profile
             if save_config:
                 zynconf.update_midi_profile({
@@ -2234,7 +2310,6 @@ class zynthian_state_manager:
         self.start_busy("stop_bluetooth", "stopping Bluetooth")
         logging.info("STOPPING bluetooth")
         try:
-            check_output("bluetoothctl power off", shell=True, timeout=1)
             check_output(f"systemctl stop {service}", shell=True, timeout=1)
             sleep(wait)
             zynthian_gui_config.bluetooth_enabled = 0
@@ -2337,16 +2412,17 @@ class zynthian_state_manager:
             return
         self.checking_for_updates = True
         def update_thread():
+            update_available = False
             try:
-                self.update_available = False
                 repos = ["/zynthian/zyncoder", "/zynthian/zynthian-ui", "/zynthian/zynthian-sys", "/zynthian/zynthian-webconf", "/zynthian/zynthian-data"]
                 for path in repos:
                     branch = check_output(["git", "-C", path, "rev-parse", "--abbrev-ref", "HEAD"], encoding="utf-8", stderr=STDOUT).strip()
                     local_hash = check_output(["git", "-C", path, "rev-parse", "HEAD"], encoding="utf-8", stderr=STDOUT).strip()
                     remote_hash = check_output(["git", "-C", path, "ls-remote", "origin", branch], encoding="utf-8", stderr=STDOUT).strip().split('\t')[0]
-                    self.update_available |= local_hash != remote_hash
+                    update_available |= local_hash != remote_hash
             except:
                 pass
+            self.update_available = update_available
             self.checking_for_updates = False
 
         thread = Thread(target=update_thread, args=())

@@ -365,6 +365,16 @@ class zynthian_engine_linuxsampler(zynthian_engine):
 	# Controllers Management
 	# ---------------------------------------------------------------------------
 
+	def send_controller_value(self, zctrl):
+		try:
+			izmop = zctrl.processor.chain.zmop_index
+			if izmop is not None and izmop >= 0:
+				mchan = zctrl.processor.ls_chan_info['midi_chan']
+				mval = zctrl.get_ctrl_midi_val()
+				lib_zyncore.zmop_send_ccontrol_change(izmop, mchan, zctrl.midi_cc, mval)
+		except Exception as err:
+			logging.error(err)
+
 	# ---------------------------------------------------------------------------
 	# Specific functions
 	# ---------------------------------------------------------------------------
@@ -562,6 +572,11 @@ class zynthian_engine_linuxsampler(zynthian_engine):
 
 	@classmethod
 	def zynapi_remove_preset(cls, preset_path):
+		parts = preset_path.split("#")
+		if len(parts) > 1:
+			fname, ext = os.path.splitext(parts[0])
+			if ext == ".gig":
+				preset_path = parts[0]
 		os.remove(preset_path)
 		# TODO => If last preset in SFZ dir, delete it too!
 
@@ -577,7 +592,9 @@ class zynthian_engine_linuxsampler(zynthian_engine):
 	@classmethod
 	def zynapi_install(cls, dpath, bank_path):
 		# TODO: Test that bank_path fits preset type (sfz/gig)
-		 
+		if not os.path.isdir(bank_path):
+			raise Exception("Destiny is not a directory!")
+
 		fname, ext = os.path.splitext(dpath)
 		if os.path.isdir(dpath):
 			# Locate sfz files and move all them to first level directory
@@ -605,7 +622,6 @@ class zynthian_engine_linuxsampler(zynthian_engine):
 				raise Exception("Destiny is not a SFZ bank!")
 
 		elif ext.lower() == '.gig':
-
 			# Move directory to destiny bank
 			if "/gig/" in bank_path:
 				shutil.move(dpath, bank_path)
@@ -617,7 +633,7 @@ class zynthian_engine_linuxsampler(zynthian_engine):
 
 	@classmethod
 	def zynapi_get_formats(cls):
-		return "gig,zip,tgz,tar.gz,tar.bz2"
+		return "gig,zip,tgz,tar.gz,tar.bz2,tar.xz"
 
 	@classmethod
 	def zynapi_martifact_formats(cls):
