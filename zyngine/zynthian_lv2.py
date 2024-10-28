@@ -493,7 +493,7 @@ def is_plugin_ui(plugin):
                     res = "Qt5UI"
                 elif ttl.find("Qt4UI") > 0:
                     res = "Qt4UI"
-                elif ttl.find("GtkUI"):
+                elif ttl.find("GtkUI") > 0:
                     res = "GtkUI"
                 elif ttl.find("X11UI") > 0 or ttl.find("X11") > 0:
                     res = "X11UI"

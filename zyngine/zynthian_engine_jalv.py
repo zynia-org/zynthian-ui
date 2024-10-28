@@ -170,15 +170,12 @@ class zynthian_engine_jalv(zynthian_engine):
                 self.native_gui = self.broken_ui[self.plugin_url][self.rpi]
             else:
                 self.native_gui = self.eng_info['UI']
-                # if not self.native_gui:
-                # self.native_gui = "AUTO"
 
         if not dryrun:
             if jackname:
                 self.jackname = jackname
             else:
-                self.jackname = self.state_manager.chain_manager.get_next_jackname(
-                    self.plugin_name)
+                self.jackname = self.state_manager.chain_manager.get_next_jackname(self.plugin_name)
 
             logging.debug("CREATING JALV ENGINE => {}".format(self.jackname))
 
@@ -190,11 +187,9 @@ class zynthian_engine_jalv(zynthian_engine):
                     jalv_bin = "jalv.gtk"
                 else:  # elif self.native_gui=="X11UI":
                     jalv_bin = "jalv.gtk"
-                self.command = (
-                    "{} --jack-name {} {}".format(jalv_bin, self.jackname, self.plugin_url))
+                self.command = f"{jalv_bin} --jack-name {self.jackname} {self.plugin_url}"
             else:
-                self.command = (
-                    "jalv -n {} {}".format(self.jackname, self.plugin_url))
+                self.command = f"jalv -n {self.jackname} {self.plugin_url}"
                 # Some plugins need a X11 display for running headless (QT5, QT6),
                 # but some others can't run headless if there is a valid DISPLAY defined
                 if not self.plugin_name.endswith("v1"):
