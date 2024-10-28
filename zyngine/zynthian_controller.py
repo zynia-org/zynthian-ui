@@ -25,10 +25,14 @@
 import math
 import liblo
 import logging
+from time import monotonic
 
 # Zynthian specific modules
 from zyncoder.zyncore import lib_zyncore
-from zyngui import zynthian_gui_config
+
+
+MIDI_CC_MODE_DETECT_TIMEOUT = 0.2
+MIDI_CC_MODE_DETECT_STEPS = 4
 
 
 class zynthian_controller:
@@ -86,6 +90,7 @@ class zynthian_controller:
         self.midi_cc_momentary_switch = False
         self.midi_cc_mode = 0   # CC mode: 0=absolute, 1=relative1, 2=relative2, 3=relative3
         self.midi_cc_mode_detecting = 0         # Used by CC mode detection algorithm
+        self.midi_cc_mode_detecting_ts = 0      # Used by CC mode detection algorithm
         self.midi_cc_mode_detecting_count = 0   # Used by CC mode detection algorithm
         self.midi_cc_mode_detecting_zero = 0    # Used by CC mode detection algorithm
         self.osc_port = None  # OSC destination port
@@ -600,6 +605,12 @@ class zynthian_controller:
         #logging.debug(f"CC val={val} => current mode={self.midi_cc_mode}, detecting mode {self.midi_cc_mode_detecting}"
         #              f" (count {self.midi_cc_mode_detecting_count}, zero {self.midi_cc_mode_detecting_zero})\n")
 
+        # Mode autodetection timeout
+        now = monotonic()
+        if now - self.midi_cc_mode_detecting_ts > MIDI_CC_MODE_DETECT_TIMEOUT:
+            self.midi_cc_mode_detecting_count = 0
+        self.midi_cc_mode_detecting_ts = now
+
         # Relative mode 1
         if 55 <= val <= 73:
             if self.midi_cc_mode == 1:
@@ -613,13 +624,13 @@ class zynthian_controller:
                     self.midi_cc_mode_detecting_zero = 0
             else:
                 if val == 64 and not self.midi_cc_mode_detecting_zero:
-                    if self.midi_cc_mode_detecting_count >= 4:
+                    if self.midi_cc_mode_detecting_count >= MIDI_CC_MODE_DETECT_STEPS:
                         self.midi_cc_mode = 1
                     else:
                         self.midi_cc_mode_detecting_zero = 1
                         self.midi_cc_mode_detecting_count += 1
                 elif val != 64 and  self.midi_cc_mode_detecting_zero:
-                    if self.midi_cc_mode_detecting_count >= 4:
+                    if self.midi_cc_mode_detecting_count >= MIDI_CC_MODE_DETECT_STEPS:
                         self.midi_cc_mode = 1
                     else:
                         self.midi_cc_mode_detecting_zero = 0
@@ -640,13 +651,13 @@ class zynthian_controller:
                     self.midi_cc_mode_detecting_zero = 0
             else:
                 if val == 0 and not self.midi_cc_mode_detecting_zero:
-                    if self.midi_cc_mode_detecting_count >= 4:
+                    if self.midi_cc_mode_detecting_count >= MIDI_CC_MODE_DETECT_STEPS:
                         self.midi_cc_mode = 2
                     else:
                         self.midi_cc_mode_detecting_zero = 1
                         self.midi_cc_mode_detecting_count += 1
                 elif val != 0 and  self.midi_cc_mode_detecting_zero:
-                    if self.midi_cc_mode_detecting_count >= 4:
+                    if self.midi_cc_mode_detecting_count >= MIDI_CC_MODE_DETECT_STEPS:
                         self.midi_cc_mode = 2
                     else:
                         self.midi_cc_mode_detecting_zero = 0
@@ -667,13 +678,13 @@ class zynthian_controller:
                     self.midi_cc_mode_detecting_zero = 0
             else:
                 if val == 16 and not self.midi_cc_mode_detecting_zero:
-                    if self.midi_cc_mode_detecting_count >= 4:
+                    if self.midi_cc_mode_detecting_count >= MIDI_CC_MODE_DETECT_STEPS:
                         self.midi_cc_mode = 3
                     else:
                         self.midi_cc_mode_detecting_zero = 1
                         self.midi_cc_mode_detecting_count += 1
                 elif val != 16 and self.midi_cc_mode_detecting_zero:
-                    if self.midi_cc_mode_detecting_count >= 4:
+                    if self.midi_cc_mode_detecting_count >= MIDI_CC_MODE_DETECT_STEPS:
                         self.midi_cc_mode = 3
                     else:
                         self.midi_cc_mode_detecting_zero = 0
