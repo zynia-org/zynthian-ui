@@ -629,7 +629,7 @@ class zynthian_gui_control(zynthian_gui_selector):
         val : CC value
         """
 
-        if self.midi_learning and self.state_manager.midi_learn_zctrl and num < 120:
+        if self.midi_learning and self.zyngui.state_manager.midi_learn_zctrl and num < 120:
             # Handle MIDI learn for assignable CC
             # TODO Detect CC relative mode, etc.
             self.midi_learn_bind(izmip, chan, num)
