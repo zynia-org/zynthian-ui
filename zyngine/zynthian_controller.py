@@ -84,6 +84,10 @@ class zynthian_controller:
         self.midi_cc = None  # MIDI CC number to send CC messages from control
         self.midi_feedback = None  # [chan,cc] for MIDI control feedback
         self.midi_cc_momentary_switch = False
+        self.midi_cc_mode = 0   # CC mode: 0=absolute, 1=relative1, 2=relative2, 3=relative3
+        self.midi_cc_mode_detecting = 0         # Used by CC mode detection algorithm
+        self.midi_cc_mode_detecting_count = 0   # Used by CC mode detection algorithm
+        self.midi_cc_mode_detecting_zero = 0    # Used by CC mode detection algorithm
         self.osc_port = None  # OSC destination port
         self.osc_path = None  # OSC path to send value to
         self.graph_path = None  # Complex map of control to engine parameter
@@ -513,24 +517,168 @@ class zynthian_controller:
     # ----------------------------------------------------------------------------
 
     def midi_control_change(self, val, send=True):
-        # if self.ticks:
-        # self.set_value(val)
-        if self.is_logarithmic:
-            value = self.value_min + self.value_range * \
-                (math.pow(10, val/127) - 1) / 9
-        elif self.is_toggle:
-            if self.midi_cc_momentary_switch:
-                if val >= 64:
-                    self.toggle()
+        self.midi_cc_mode_detect(val)
+
+        # CC mode absolute
+        if self.midi_cc_mode == 0:
+            if self.is_logarithmic:
+                value = self.value_min + self.value_range * \
+                    (math.pow(10, val/127) - 1) / 9
+            elif self.is_toggle:
+                if self.midi_cc_momentary_switch:
+                    if val >= 64:
+                        self.toggle()
+                    else:
+                        return
                 else:
-                    return
+                    if val >= 64:
+                        value = self.value_max
+                    else:
+                        value = self.value_min
             else:
-                if val >= 64:
-                    value = self.value_max
-                else:
-                    value = self.value_min
+                value = self.value_min + val * self.value_range / 127
+
+        # CC mode relative (1, 2 or 3)
         else:
-            value = self.value_min + val * self.value_range / 127
+            if self.midi_cc_mode == 1:
+                if val == 64:
+                    return
+                dval = val - 64
+            elif self.midi_cc_mode == 2:
+                if val == 0:
+                    return
+                if val >= 125:
+                    dval = val - 128
+            elif self.midi_cc_mode == 3:
+                if val == 16:
+                    return
+                dval = val - 16
+            else:
+                logging.error(f"Bad CC mode => {self.midi_cc_mode}")
+                return
+
+            if self.is_logarithmic:
+                if dval > 0:
+                    value = self.value * (1 + dval/10)
+                else:
+                    value = self.value / (1 + dval/10)
+            elif self.is_toggle:
+                if self.midi_cc_momentary_switch:
+                    if dval > 0:
+                        self.toggle()
+                    else:
+                        return
+                else:
+                    if dval > 0:
+                        value = self.value_max
+                    else:
+                        value = self.value_min
+            else:
+                value = self.value + dval
+
         self.set_value(value, send)
+
+    def midi_cc_mode_detect(self, val):
+        """
+        Relative 1 : The knob will send values 61-63 when turned in a negative direction and values
+         65-67 when turned in a positive direction. The turn speed determines the parameter response.
+
+        Relative 2 : The knob will send values 125-127 when turned in a negative direction and values
+        1-3 when turned in a positive direction. The turn speed determines the parameter response.
+
+        Relative 3 : The knob will send values 13-15 when turned in a negative direction and values
+        17-19 when turned in a positive direction. The turn speed determines the parameter response.
+
+        Please note that a “0” value will be sent between each steps.
+        In relative mode 1, moving (slowly) right will send 65/64/65/64/65 etc… This addition of
+        this “0” value has been made to prevent browsing issues in Ableton Live.
+        This parameter was called “knob fix” in Midi Control Center, but has been hard implemented
+        in the last firmware versions.
+        """
+
+        # Relative mode 1
+        if 61 <= val <= 67:
+            if self.midi_cc_mode == 1:
+                return
+            if self.midi_cc_mode_detecting != 1:
+                self.midi_cc_mode_detecting = 1
+                self.midi_cc_mode_detecting_count = 0
+                if val == 64:
+                    self.midi_cc_mode_detecting_zero = 1
+                else:
+                    self.midi_cc_mode_detecting_zero = 0
+            else:
+                if val == 64 and not self.midi_cc_mode_detecting_zero:
+                    if self.midi_cc_mode_detecting_count >= 4:
+                        self.midi_cc_mode = 1
+                    else:
+                        self.midi_cc_mode_detecting_zero = 1
+                        self.midi_cc_mode_detecting_count += 1
+                elif val != 64 and  self.midi_cc_mode_detecting_zero:
+                    if self.midi_cc_mode_detecting_count >= 4:
+                        self.midi_cc_mode = 1
+                    else:
+                        self.midi_cc_mode_detecting_zero = 0
+                        self.midi_cc_mode_detecting_count += 1
+                else:
+                    self.midi_cc_mode_detecting_count = 0
+
+        # Relative mode 2
+        elif 0 <= val <= 3 or 125 <= val <= 127:
+            if self.midi_cc_mode == 2:
+                return
+            if self.midi_cc_mode_detecting != 2:
+                self.midi_cc_mode_detecting = 2
+                self.midi_cc_mode_detecting_count = 0
+                if val == 0:
+                    self.midi_cc_mode_detecting_zero = 1
+                else:
+                    self.midi_cc_mode_detecting_zero = 0
+            else:
+                if val == 0 and not self.midi_cc_mode_detecting_zero:
+                    if self.midi_cc_mode_detecting_count >= 4:
+                        self.midi_cc_mode = 2
+                    else:
+                        self.midi_cc_mode_detecting_zero = 1
+                        self.midi_cc_mode_detecting_count += 1
+                elif val != 0 and  self.midi_cc_mode_detecting_zero:
+                    if self.midi_cc_mode_detecting_count >= 4:
+                        self.midi_cc_mode = 2
+                    else:
+                        self.midi_cc_mode_detecting_zero = 0
+                        self.midi_cc_mode_detecting_count += 1
+                else:
+                    self.midi_cc_mode_detecting_count = 0
+
+        # Relative mode 3
+        elif 13 <= val <= 19:
+            if self.midi_cc_mode == 3:
+                return
+            if self.midi_cc_mode_detecting != 3:
+                self.midi_cc_mode_detecting = 3
+                self.midi_cc_mode_detecting_count = 0
+                if val == 16:
+                    self.midi_cc_mode_detecting_zero = 1
+                else:
+                    self.midi_cc_mode_detecting_zero = 0
+            else:
+                if val == 16 and not self.midi_cc_mode_detecting_zero:
+                    if self.midi_cc_mode_detecting_count >= 4:
+                        self.midi_cc_mode = 3
+                    else:
+                        self.midi_cc_mode_detecting_zero = 1
+                        self.midi_cc_mode_detecting_count += 1
+                elif val != 16 and  self.midi_cc_mode_detecting_zero:
+                    if self.midi_cc_mode_detecting_count >= 4:
+                        self.midi_cc_mode = 3
+                    else:
+                        self.midi_cc_mode_detecting_zero = 0
+                        self.midi_cc_mode_detecting_count += 1
+                else:
+                    self.midi_cc_mode_detecting_count = 0
+
+        else:
+            self.midi_cc_mode_detecting = 0
+            self.midi_cc_mode = 0
 
 # ******************************************************************************

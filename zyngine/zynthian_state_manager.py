@@ -893,13 +893,17 @@ class zynthian_state_manager:
 
                 # Note Off
                 elif evtype == 0x8:
-                    zynsigman.send_queued(zynsigman.S_MIDI, zynsigman.SS_MIDI_NOTE_OFF,
-                                          izmip=izmip, chan=chan, note=ev[1] & 0x7f, vel=ev[2] & 0x7f)
+                    # Handle external devices only
+                    if izmip < self.get_max_num_midi_devs():
+                        zynsigman.send_queued(zynsigman.S_MIDI, zynsigman.SS_MIDI_NOTE_OFF,
+                                        izmip=izmip, chan=chan, note=ev[1] & 0x7f, vel=ev[2] & 0x7f)
 
                 # Note On
                 elif evtype == 0x9:
-                    zynsigman.send_queued(zynsigman.S_MIDI, zynsigman.SS_MIDI_NOTE_ON,
-                                          izmip=izmip, chan=chan, note=ev[1] & 0x7f, vel=ev[2] & 0x7f)
+                    # Handle external devices only
+                    if izmip < self.get_max_num_midi_devs():
+                        zynsigman.send_queued(zynsigman.S_MIDI, zynsigman.SS_MIDI_NOTE_ON,
+                                        izmip=izmip, chan=chan, note=ev[1] & 0x7f, vel=ev[2] & 0x7f)
 
                 # Flag MIDI event
                 self.status_midi = True

@@ -90,6 +90,10 @@ class zynthian_gui_control(zynthian_gui_selector):
 
     def build_view(self):
         super().build_view()
+        zynsigman.register(
+            zynsigman.S_MIDI, zynsigman.SS_MIDI_CC, self.cb_midi_cc)
+        zynsigman.register(
+            zynsigman.S_MIDI, zynsigman.SS_MIDI_PC, self.cb_midi_pc)
         if zynthian_gui_config.enable_touch_navigation:
             zynsigman.register(
                 zynsigman.S_GUI, zynsigman.SS_GUI_SHOW_SIDEBAR, self.cb_show_sidebar)
@@ -101,12 +105,28 @@ class zynthian_gui_control(zynthian_gui_selector):
     def hide(self):
         if self.shown:
             self.exit_midi_learn()
+            zynsigman.unregister(
+                zynsigman.S_MIDI, zynsigman.SS_MIDI_CC, self.cb_midi_cc)
+            zynsigman.unregister(
+                zynsigman.S_MIDI, zynsigman.SS_MIDI_PC, self.cb_midi_pc)
             if zynthian_gui_config.enable_touch_navigation:
                 zynsigman.unregister(
                     zynsigman.S_GUI, zynsigman.SS_GUI_SHOW_SIDEBAR, self.cb_show_sidebar)
                 zynsigman.unregister(
                     zynsigman.S_GUI, self.SS_GUI_CONTROL_MODE, self.cb_control_mode)
         super().hide()
+
+
+    def cb_midi_pc(self, izmip, chan, num):
+        """Handle MIDI_PC signal
+
+        izmip : MIDI input device index
+        chan : MIDI channel
+        num : CC number
+        """
+
+        # Refresh control screen after loading ZS3
+        self.zyngui.chain_control()
 
     def show_sidebar(self, show):
         self.sidebar_shown = show
@@ -592,14 +612,28 @@ class zynthian_gui_control(zynthian_gui_selector):
                 self.enter_midi_learn(mlmode, False)
 
     def midi_learn_bind(self, zmip, chan, midi_cc):
-        if self.midi_learning:
-            if self.midi_learning == MIDI_LEARNING_CHAIN:
-                self.zyngui.chain_manager.add_midi_learn(
-                    chan, midi_cc, self.zyngui.state_manager.get_midi_learn_zctrl())
-            else:
-                self.zyngui.chain_manager.add_midi_learn(
-                    chan, midi_cc, self.zyngui.state_manager.get_midi_learn_zctrl(), zmip)
-            self.exit_midi_learn()
+        if self.midi_learning == MIDI_LEARNING_CHAIN:
+            self.zyngui.chain_manager.add_midi_learn(
+                chan, midi_cc, self.zyngui.state_manager.get_midi_learn_zctrl())
+        elif self.midi_learning == MIDI_LEARNING_GLOBAL:
+            self.zyngui.chain_manager.add_midi_learn(
+                chan, midi_cc, self.zyngui.state_manager.get_midi_learn_zctrl(), zmip)
+        self.exit_midi_learn()
+
+    def cb_midi_cc(self, izmip, chan, num, val):
+        """Handle MIDI_CC signal
+
+        izmip : MIDI input device index
+        chan : MIDI channel
+        num : CC number
+        val : CC value
+        """
+
+        if self.midi_learning and self.state_manager.midi_learn_zctrl and num < 120:
+            # Handle MIDI learn for assignable CC
+            # TODO Detect CC relative mode, etc.
+            self.midi_learn_bind(izmip, chan, num)
+            self.zyngui.show_current_screen()
 
     def midi_unlearn(self, param=None):
         if param:

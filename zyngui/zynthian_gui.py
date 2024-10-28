@@ -2140,49 +2140,15 @@ class zynthian_gui:
 
     def register_signals(self):
         zynsigman.register(
-            zynsigman.S_MIDI, zynsigman.SS_MIDI_CC, self.cb_midi_cc)
-        zynsigman.register(
-            zynsigman.S_MIDI, zynsigman.SS_MIDI_PC, self.cb_midi_pc)
-        zynsigman.register(
             zynsigman.S_MIDI, zynsigman.SS_MIDI_NOTE_ON, self.cb_midi_note_on)
         zynsigman.register(
             zynsigman.S_MIDI, zynsigman.SS_MIDI_NOTE_OFF, self.cb_midi_note_off)
 
     def unregister_signals(self):
         zynsigman.unregister(
-            zynsigman.S_MIDI, zynsigman.SS_MIDI_CC, self.cb_midi_cc)
-        zynsigman.unregister(
-            zynsigman.S_MIDI, zynsigman.SS_MIDI_PC, self.cb_midi_pc)
-        zynsigman.unregister(
             zynsigman.S_MIDI, zynsigman.SS_MIDI_NOTE_ON, self.cb_midi_note_on)
         zynsigman.unregister(
             zynsigman.S_MIDI, zynsigman.SS_MIDI_NOTE_OFF, self.cb_midi_note_off)
-
-    def cb_midi_cc(self, izmip, chan, num, val):
-        """Handle MIDI_CC signal
-
-        izmip : MIDI input device index
-        chan : MIDI channel
-        num : CC number
-        val : CC value
-        """
-
-        if self.state_manager.midi_learn_zctrl and num < 120:
-            # Handle MIDI learn for assignable CC
-            self.screens['control'].midi_learn_bind(izmip, chan, num)
-            self.show_current_screen()
-
-    def cb_midi_pc(self, izmip, chan, num):
-        """Handle MIDI_PC signal
-
-        izmip : MIDI input device index
-        chan : MIDI channel
-        num : CC number
-        """
-
-        # Refresh control screen after loading ZS3 => Buffff!
-        if self.current_screen == 'control':
-            self.chain_control()
 
     def cb_midi_note_on(self, izmip, chan, note, vel):
         """Handle MIDI_NOTE_ON signal
@@ -2193,19 +2159,18 @@ class zynthian_gui:
         vel : Velocity value
         """
 
-        # Handle external devices only
-        if izmip < self.state_manager.get_max_num_midi_devs():
-            # Pattern recording
-            if self.current_screen == 'pattern_editor' and self.state_manager.zynseq.libseq.isMidiRecord():
-                self.screens['pattern_editor'].midi_note_on(note)
-            # Preload preset (note-on)
-            elif self.current_screen == 'preset' and zynthian_gui_config.preset_preload_noteon and \
-                    (zynautoconnect.get_midi_in_dev_mode(izmip) or chan == self.get_current_processor().get_midi_chan()):
-                self.screens['preset'].preselect_action()
-            # Note Range Learn
-            elif self.current_screen == 'midi_key_range' and self.state_manager.midi_learn_state:
-                self.screens['midi_key_range'].learn_note_range(note)
-            # Channel activity
+        # Pattern recording
+        if self.current_screen == 'pattern_editor' and self.state_manager.zynseq.libseq.isMidiRecord():
+            self.screens['pattern_editor'].midi_note_on(note)
+        # Preload preset (note-on)
+        elif self.current_screen == 'preset' and zynthian_gui_config.preset_preload_noteon and \
+                (zynautoconnect.get_midi_in_dev_mode(izmip) or chan == self.get_current_processor().get_midi_chan()):
+            self.screens['preset'].preselect_action()
+        # Note Range Learn
+        elif self.current_screen == 'midi_key_range' and self.state_manager.midi_learn_state:
+            self.screens['midi_key_range'].learn_note_range(note)
+        # Channel activity
+        elif self.current_screen == 'midi_chan':
             self.screens['midi_chan'].midi_chan_activity(chan)
 
     def cb_midi_note_off(self, izmip, chan, note, vel):
@@ -2217,11 +2182,9 @@ class zynthian_gui:
         vel : Velocity value
         """
 
-        # Handle external devices only
-        if izmip < self.state_manager.get_max_num_midi_devs():
-            # Pattern recording
-            if self.current_screen == 'pattern_editor' and self.state_manager.zynseq.libseq.isMidiRecord():
-                self.screens['pattern_editor'].midi_note_off(note)
+        # Pattern recording
+        if self.current_screen == 'pattern_editor' and self.state_manager.zynseq.libseq.isMidiRecord():
+            self.screens['pattern_editor'].midi_note_off(note)
 
     # ------------------------------------------------------------------
     # Zynpot Thread
