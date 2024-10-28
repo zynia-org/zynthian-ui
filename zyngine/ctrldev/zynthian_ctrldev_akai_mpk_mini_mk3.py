@@ -1336,7 +1336,8 @@ class UserHandler(ModeHandlerBase):
                 "cc": range(40, 56)
             },
             knobs={
-                "mode": [KNOB_MODE_ABS] * 8,
+                #"mode": [KNOB_MODE_ABS] * 8,
+                "mode": [KNOB_MODE_REL] * 8,
                 "cc": range(56, 64),
                 "min": [0] * 8,
                 "max": [127] * 8,

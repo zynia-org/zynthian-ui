@@ -379,9 +379,16 @@ class zynthian_engine_jalv(zynthian_engine):
             try:
                 parts = line.split(" = ")
                 if len(parts) == 2:
-                    self.lv2_zctrl_dict[parts[0]]._set_value(float(parts[1]))
+                    try:
+                        val = float(parts[1])
+                    except Exception as e:
+                        logging.warning(f"Wrong parameter value when loading LV2 preset => {line}")
+                        continue
+                    self.lv2_zctrl_dict[parts[0]]._set_value(val)
             except Exception as e:
-                logging.warning(e)
+                # TODO This shouldn't happen when property parameters are fully implemented
+                #logging.warning(f"Unknown parameter when loading LV2 preset => {line}")
+                pass
 
         return True
 
