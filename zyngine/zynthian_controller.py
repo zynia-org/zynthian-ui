@@ -551,7 +551,7 @@ class zynthian_controller:
             elif self.midi_cc_mode == 2:
                 if val == 0:
                     return
-                if val >= 118:
+                if val >= 64:
                     dval = val - 128
                 else:
                     dval = val
