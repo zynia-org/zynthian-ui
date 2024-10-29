@@ -88,7 +88,7 @@ class zynthian_controller:
         self.midi_cc = None  # MIDI CC number to send CC messages from control
         self.midi_feedback = None  # [chan,cc] for MIDI control feedback
         self.midi_cc_momentary_switch = False
-        self.midi_cc_mode = 0   # CC mode: 0=absolute, 1=relative1, 2=relative2, 3=relative3
+        self.midi_cc_mode = -1                  # CC mode: -1=unknown,  0=absolute, 1=relative1, 2=relative2, 3=relative3
         self.midi_cc_mode_detecting = 0         # Used by CC mode detection algorithm
         self.midi_cc_mode_detecting_ts = 0      # Used by CC mode detection algorithm
         self.midi_cc_mode_detecting_count = 0   # Used by CC mode detection algorithm
@@ -522,10 +522,12 @@ class zynthian_controller:
     # ----------------------------------------------------------------------------
 
     def midi_control_change(self, val, send=True):
-        self.midi_cc_mode_detect(val)
+        # CC mode not detected yet!
+        if self.midi_cc_mode == -1:
+            self.midi_cc_mode_detect(val)
 
         # CC mode absolute
-        if self.midi_cc_mode == 0:
+        elif self.midi_cc_mode == 0:
             if self.is_logarithmic:
                 value = self.value_min + self.value_range * \
                     (math.pow(10, val/127) - 1) / 9
@@ -542,8 +544,8 @@ class zynthian_controller:
             else:
                 value = self.value_min + val * self.value_range / 127
 
-        # CC mode relative (1, 2 or 3)
         else:
+            # CC mode relative (1, 2 or 3)
             if self.midi_cc_mode == 1:
                 if val == 64:
                     return
@@ -560,7 +562,7 @@ class zynthian_controller:
                     return
                 dval = val - 16
             else:
-                logging.error(f"Bad CC mode => {self.midi_cc_mode}")
+                logging.error(f"Wrong MIDI CC mode {self.midi_cc_mode}")
                 return
 
             if self.is_logarithmic:
@@ -584,6 +586,9 @@ class zynthian_controller:
 
         self.set_value(value, send)
 
+    def midi_cc_mode_reset(self):
+        self.midi_cc_mode = -1
+
     def midi_cc_mode_detect(self, val):
         """
         Relative 1 : The knob will send values 55-63 when turned in a negative direction and values
@@ -602,8 +607,8 @@ class zynthian_controller:
         in the last firmware versions.
         """
 
-        logging.debug(f"CC val={val} => current mode={self.midi_cc_mode}, detecting mode {self.midi_cc_mode_detecting}"
-                      f" (count {self.midi_cc_mode_detecting_count}, zero {self.midi_cc_mode_detecting_zero})\n")
+        #logging.debug(f"CC val={val} => current mode={self.midi_cc_mode}, detecting mode {self.midi_cc_mode_detecting}"
+        #              f" (count {self.midi_cc_mode_detecting_count}, zero {self.midi_cc_mode_detecting_zero})\n")
 
         # Mode autodetection timeout
         now = monotonic()
@@ -644,7 +649,7 @@ class zynthian_controller:
                     self.midi_cc_mode_detecting_count = 0
 
         # Relative mode 2
-        elif 0 <= val <= 3 or 125 <= val <= 127:
+        elif 0 <= val <= 6 or 122 <= val <= 127:
             if self.midi_cc_mode == 2:
                 return
             if self.midi_cc_mode_detecting != 2:

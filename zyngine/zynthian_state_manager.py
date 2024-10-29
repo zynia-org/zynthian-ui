@@ -1836,6 +1836,7 @@ class zynthian_state_manager:
 
         self.disable_learn_pc()
         self.midi_learn_zctrl = zctrl
+        self.midi_learn_zctrl.midi_cc_mode_reset()
         self.set_midi_learn(True)
 
     def disable_learn_cc(self):
