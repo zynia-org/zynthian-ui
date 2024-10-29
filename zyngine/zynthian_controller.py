@@ -623,7 +623,7 @@ class zynthian_controller:
                 else:
                     self.midi_cc_mode_detecting_zero = 0
             else:
-                if val == 64 and self.midi_cc_mode_detecting_zero == 0:
+                if val == 64 and self.midi_cc_mode_detecting_zero <= 0:
                     if self.midi_cc_mode_detecting_count >= MIDI_CC_MODE_DETECT_STEPS:
                         self.midi_cc_mode = 1
                     else:
@@ -633,7 +633,12 @@ class zynthian_controller:
                     if self.midi_cc_mode_detecting_count >= MIDI_CC_MODE_DETECT_STEPS:
                         self.midi_cc_mode = 1
                     else:
-                        self.midi_cc_mode_detecting_zero = 0
+                        self.midi_cc_mode_detecting_zero = -1
+                        self.midi_cc_mode_detecting_count += 1
+                elif self.midi_cc_mode_detecting_zero == 0:
+                    if self.midi_cc_mode_detecting_count >= MIDI_CC_MODE_DETECT_STEPS:
+                        self.midi_cc_mode = 1
+                    else:
                         self.midi_cc_mode_detecting_count += 1
                 else:
                     self.midi_cc_mode_detecting_count = 0
@@ -649,10 +654,8 @@ class zynthian_controller:
                     self.midi_cc_mode_detecting_zero = 1
                 else:
                     self.midi_cc_mode_detecting_zero = 0
-                # Disabling zero interleaving for mode 2 (AKAI MPK and others)
-                self.midi_cc_mode_detecting_zero = -1
             else:
-                if val == 0 and self.midi_cc_mode_detecting_zero == 0:
+                if val == 0 and self.midi_cc_mode_detecting_zero <= 0:
                     if self.midi_cc_mode_detecting_count >= MIDI_CC_MODE_DETECT_STEPS:
                         self.midi_cc_mode = 2
                     else:
@@ -662,9 +665,9 @@ class zynthian_controller:
                     if self.midi_cc_mode_detecting_count >= MIDI_CC_MODE_DETECT_STEPS:
                         self.midi_cc_mode = 2
                     else:
-                        self.midi_cc_mode_detecting_zero = 0
+                        self.midi_cc_mode_detecting_zero = -1
                         self.midi_cc_mode_detecting_count += 1
-                elif self.midi_cc_mode_detecting_zero == -1:
+                elif self.midi_cc_mode_detecting_zero == 0:
                     if self.midi_cc_mode_detecting_count >= MIDI_CC_MODE_DETECT_STEPS:
                         self.midi_cc_mode = 2
                     else:
@@ -684,7 +687,7 @@ class zynthian_controller:
                 else:
                     self.midi_cc_mode_detecting_zero = 0
             else:
-                if val == 16 and self.midi_cc_mode_detecting_zero == 0:
+                if val == 16 and self.midi_cc_mode_detecting_zero <= 0:
                     if self.midi_cc_mode_detecting_count >= MIDI_CC_MODE_DETECT_STEPS:
                         self.midi_cc_mode = 3
                     else:
@@ -694,7 +697,12 @@ class zynthian_controller:
                     if self.midi_cc_mode_detecting_count >= MIDI_CC_MODE_DETECT_STEPS:
                         self.midi_cc_mode = 3
                     else:
-                        self.midi_cc_mode_detecting_zero = 0
+                        self.midi_cc_mode_detecting_zero = -1
+                        self.midi_cc_mode_detecting_count += 1
+                elif self.midi_cc_mode_detecting_zero == 0:
+                    if self.midi_cc_mode_detecting_count >= MIDI_CC_MODE_DETECT_STEPS:
+                        self.midi_cc_mode = 3
+                    else:
                         self.midi_cc_mode_detecting_count += 1
                 else:
                     self.midi_cc_mode_detecting_count = 0
