@@ -32,7 +32,7 @@ from zyncoder.zyncore import lib_zyncore
 
 
 MIDI_CC_MODE_DETECT_TIMEOUT = 0.2
-MIDI_CC_MODE_DETECT_STEPS = 6
+MIDI_CC_MODE_DETECT_STEPS = 8
 
 
 class zynthian_controller:
@@ -602,8 +602,8 @@ class zynthian_controller:
         in the last firmware versions.
         """
 
-        #logging.debug(f"CC val={val} => current mode={self.midi_cc_mode}, detecting mode {self.midi_cc_mode_detecting}"
-        #              f" (count {self.midi_cc_mode_detecting_count}, zero {self.midi_cc_mode_detecting_zero})\n")
+        logging.debug(f"CC val={val} => current mode={self.midi_cc_mode}, detecting mode {self.midi_cc_mode_detecting}"
+                      f" (count {self.midi_cc_mode_detecting_count}, zero {self.midi_cc_mode_detecting_zero})\n")
 
         # Mode autodetection timeout
         now = monotonic()
@@ -638,7 +638,7 @@ class zynthian_controller:
                 elif self.midi_cc_mode_detecting_zero == 0:
                     if self.midi_cc_mode_detecting_count >= MIDI_CC_MODE_DETECT_STEPS:
                         self.midi_cc_mode = 1
-                    else:
+                    elif val == 63 or val == 65:
                         self.midi_cc_mode_detecting_count += 1
                 else:
                     self.midi_cc_mode_detecting_count = 0
@@ -670,7 +670,7 @@ class zynthian_controller:
                 elif self.midi_cc_mode_detecting_zero == 0:
                     if self.midi_cc_mode_detecting_count >= MIDI_CC_MODE_DETECT_STEPS:
                         self.midi_cc_mode = 2
-                    else:
+                    elif val == 1 or val == 127:
                         self.midi_cc_mode_detecting_count += 1
                 else:
                     self.midi_cc_mode_detecting_count = 0
@@ -702,7 +702,7 @@ class zynthian_controller:
                 elif self.midi_cc_mode_detecting_zero == 0:
                     if self.midi_cc_mode_detecting_count >= MIDI_CC_MODE_DETECT_STEPS:
                         self.midi_cc_mode = 3
-                    else:
+                    elif val == 15 or val == 17:
                         self.midi_cc_mode_detecting_count += 1
                 else:
                     self.midi_cc_mode_detecting_count = 0
