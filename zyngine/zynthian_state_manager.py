@@ -2632,7 +2632,7 @@ class zynthian_state_manager:
                     stable_branch = os.environ.get('ZYNTHIAN_STABLE_BRANCH', "oram")
                     for repo in repos:
                         path = f"/zynthian/{repo}"
-                        branch = get_repo_branch()
+                        branch = get_repo_branch(path)
                         # Get last tag release
                         check_output(["git", "-C", path, "remote", "update", "origin", "--prune"], encoding="utf-8",
                                           stderr=STDOUT)
@@ -2645,7 +2645,7 @@ class zynthian_state_manager:
                 else:
                     for repo in repos:
                         path = f"/zynthian/{repo}"
-                        branch = get_repo_branch()
+                        branch = get_repo_branch(path)
                         local_hash = check_output(["git", "-C", path, "rev-parse", "HEAD"], encoding="utf-8",
                                                   stderr=STDOUT).strip()
                         remote_hash = check_output(["git", "-C", path, "ls-remote", "origin", branch], encoding="utf-8",
