@@ -2471,7 +2471,7 @@ class zynthian_state_manager:
         def update_thread():
             update_available = False
             try:
-                repos = ["zyncoder", "zynthian-ui", "zynthian-sys", "zynthian-webconf", "zynthian-data"]
+                repos = ["zynthian-ui", "zynthian-sys", "zynthian-webconf", "zynthian-data", "zyncoder"]
                 # If attached to last stable => Detect if new tag relase available
                 if os.environ.get('ZYNTHIAN_STABLE_TAG', "") == "last":
                     stable_branch = os.environ.get('ZYNTHIAN_STABLE_BRANCH', "oram")
@@ -2481,9 +2481,12 @@ class zynthian_state_manager:
                         # Get last tag release
                         check_output(["git", "-C", path, "remote", "update", "origin", "--prune"], encoding="utf-8",
                                           stderr=STDOUT)
-                        last_stag = check_output(["git", "-C", path, "tag", "-l", f"{stable_branch}-*"], encoding="utf-8",
-                                          stderr=STDOUT).split("\n")[-1].strip()
+                        stags = check_output(["git", "-C", path, "tag", "-l", f"{stable_branch}-*"], encoding="utf-8",
+                                          stderr=STDOUT).strip().split("\n")
+                        last_stag = stags[-1].strip()
+                        #logging.debug(f"STABLE TAG RELEASES => {stags}")
                         if branch != last_stag:
+                            #logging.info(f"For reposiroty '{repo}', current branch ({branch}) != last tag release ({last_stag})!")
                             self.update_available = True
                             break
                 # else => Check for commits to pull
