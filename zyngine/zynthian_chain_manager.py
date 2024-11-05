@@ -1097,6 +1097,29 @@ class zynthian_chain_manager:
             logging.error(e)
             return f"{jackname}-00"
 
+    def reload_engine_preset_info(self, eng_code):
+        """Reload preset info for an engine
+
+        eng_code : engine code
+        """
+
+        self.state_manager.start_busy("reload_engine_preset_info", "Scanning for banks & presets")
+        if eng_code.startswith("JV/"):
+            try:
+                plugin_uri = self.engine_info[eng_code]['URL']
+                #zynthian_lv2.generate_presets_cache_workaround()
+                zynthian_lv2.generate_plugin_presets_cache(plugin_uri, True)
+            except Exception as e:
+                logging.error(e)
+
+        for proc in self.processors.values():
+            if eng_code and proc.eng_code.startswith(eng_code):
+                try:
+                    proc.engine.load_preset_info()
+                except:
+                    pass
+        self.state_manager.end_busy("reload_engine_preset_info")
+
     # ------------------------------------------------------------------------
     # State Management
     # ------------------------------------------------------------------------
