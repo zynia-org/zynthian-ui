@@ -1301,6 +1301,9 @@ class zynthian_gui_mixer(zynthian_gui_base.zynthian_gui_base):
         except:
             title = f"MIDI Learn Options"
 
+        if not self.zynmixer.midi_learn_zctrl:
+            options["Enable MIDI learn" ] = "enable"
+
         if isinstance(self.zynmixer.midi_learn_zctrl, zynthian_controller):
             if self.zynmixer.midi_learn_zctrl.is_toggle:
                 if self.zynmixer.midi_learn_zctrl.midi_cc_momentary_switch:
@@ -1320,6 +1323,9 @@ class zynthian_gui_mixer(zynthian_gui_base.zynthian_gui_base):
     def midi_learn_menu_cb(self, options, params):
         if params == 'clean':
             self.midi_unlearn_action()
+        elif params == 'enable':
+            self.enter_midi_learn()
+            self.zyngui.show_screen("audio_mixer")
         elif params == "latched":
             self.zynmixer.midi_learn_zctrl.midi_cc_momentary_switch = 0
         elif params == "momentary":
