@@ -43,27 +43,36 @@ from zyngui import zynthian_gui_config
 # ----------------------------------------------------------------------------
 
 MAX_NUM_MIDI_CHANS = 16
+
 # TODO: Get this from zynmixer
 MAX_NUM_MIXER_CHANS = 16
-# TODO: Get this from lib_zyncore
-MAX_NUM_ZMOPS = 16
-MAX_NUM_MIDI_DEVS = 24
-ZMIP_CTRL_INDEX = 26
-ZMIP_INT_INDEX = 27
+
+# Get ZYnMidiRouter parameters and limits from lib_zyncore
+NUM_ZMOP_CHAINS = lib_zyncore.zmop_get_num_chains()
+MAX_NUM_ZMOPS = NUM_ZMOP_CHAINS - 1
+NUM_MIDI_DEVS_IN = lib_zyncore.zmip_get_num_devs() + 3
+NUM_MIDI_DEVS_OUT = lib_zyncore.zmop_get_num_devs()
+MAX_NUM_MIDI_DEVS = min(NUM_MIDI_DEVS_IN, NUM_MIDI_DEVS_OUT)
+ZMIP_SEQ_INDEX = lib_zyncore.zmip_get_seq_index()
+ZMIP_STEP_INDEX = lib_zyncore.zmip_get_step_index()
+ZMIP_INT_INDEX = lib_zyncore.zmip_get_int_index()
+ZMIP_CTRL_INDEX = lib_zyncore.zmip_get_ctrl_index()
 
 engine2class = {
-    "SL": zynthian_engine_sooperlooper,
     "ZY": zynthian_engine_zynaddsubfx,
     "FS": zynthian_engine_fluidsynth,
     "SF": zynthian_engine_sfizz,
     "LS": zynthian_engine_linuxsampler,
     "BF": zynthian_engine_setbfree,
+    'JV': zynthian_engine_jalv,
     "AE": zynthian_engine_aeolus,
+    'PT': zynthian_engine_pianoteq,
     "AP": zynthian_engine_audioplayer,
+    "SL": zynthian_engine_sooperlooper,
+    'SX': zynthian_engine_sysex,
+    'MC': zynthian_engine_midi_control,
     'PD': zynthian_engine_puredata,
     'MD': zynthian_engine_modui,
-    'JV': zynthian_engine_jalv,
-    'PT': zynthian_engine_pianoteq,
     'IR': zynthian_engine_inet_radio
 }
 
@@ -101,9 +110,11 @@ class zynthian_chain_manager:
         self.zyngines = {}  # List of instantiated engines
         self.processors = {}  # Dictionary of processor objects indexed by UID
         self.active_chain_id = None  # Active chain id
-        self.midi_chan_2_chain_ids = [list() for _ in range(MAX_NUM_MIDI_CHANS)]  # Chain IDs mapped by MIDI channel
+        self.midi_chan_2_chain_ids = [list() for _ in range(
+            MAX_NUM_MIDI_CHANS)]  # Chain IDs mapped by MIDI channel
 
-        self.absolute_midi_cc_binding = {}  # Map of list of zctrls indexed by 24-bit ZMOP,CHAN,CC
+        # Map of list of zctrls indexed by 24-bit ZMOP,CHAN,CC
+        self.absolute_midi_cc_binding = {}
         self.chain_midi_cc_binding = {}  # Map of list of zctrls indexed by 16-bit CHAIN,CC
         self.chan_midi_cc_binding = {}  # Map of list of zctrls indexed by 16-bit CHAN,CC
 
@@ -136,9 +147,10 @@ class zynthian_chain_manager:
         for key, info in cls.engine_info.items():
             try:
                 info['ENGINE'] = engine2class[key[0:2]]
-                #logging.debug(f"Found engine class for {key}")
+                # logging.debug(f"Found engine class for {key}")
             except:
-                logging.error(f"Engine {key} has been disabled. Can't find an engine class for it.")
+                logging.error(
+                    f"Engine {key} has been disabled. Can't find an engine class for it.")
                 info['ENGINE'] = None
                 info['ENABLED'] = False
 
@@ -185,7 +197,6 @@ class zynthian_chain_manager:
             while chain_id in self.chains:
                 chain_id += 1
 
-
         # If Main chain ...
         if chain_id == 0:  # main
             midi_thru = False
@@ -220,12 +231,26 @@ class zynthian_chain_manager:
             if zmop_index is None or not self.is_free_zmop_index(zmop_index):
                 zmop_index = self.get_next_free_zmop_index()
             chain.set_zmop_index(zmop_index)
-        if chain.zmop_index is not None and self.state_manager.ctrldev_manager is not None:
-            # Enable all MIDI inputs by default
-            # TODO: Should we allow user to define default routing?
+        if chain.zmop_index is not None:
+            # Enable all MIDI input devices by default => TODO: Should we allow user to define default routing?
             for zmip in range(MAX_NUM_MIDI_DEVS):
-                unroute = zmip in self.state_manager.ctrldev_manager.drivers and self.state_manager.ctrldev_manager.drivers[zmip].unroute_from_chains
-                lib_zyncore.zmop_set_route_from(chain.zmop_index, zmip, not unroute)
+                try:
+                    unroute = zmip in self.state_manager.ctrldev_manager.drivers and self.state_manager.ctrldev_manager.drivers[
+                        zmip].unroute_from_chains
+                except Exception as e:
+                    unroute = False
+                    logging.warning(f"ctrldev_manager => {e}")
+                lib_zyncore.zmop_set_route_from(
+                    chain.zmop_index, zmip, not unroute)
+            # Enable StepSeq MIDI intput
+            lib_zyncore.zmop_set_route_from(
+                chain.zmop_index, ZMIP_STEP_INDEX, True)
+            # Enable SMF sequencer MIDI intput
+            lib_zyncore.zmop_set_route_from(
+                chain.zmop_index, ZMIP_SEQ_INDEX, True)
+            # Enable CV/Gate MIDI intput (fake port zmip)
+            lib_zyncore.zmop_set_route_from(
+                chain.zmop_index, ZMIP_INT_INDEX, True)
 
         # Set MIDI channel
         self.set_midi_chan(chain_id, midi_chan)
@@ -239,9 +264,10 @@ class zynthian_chain_manager:
         zynautoconnect.request_audio_connect(fast_refresh)
         zynautoconnect.request_midi_connect(fast_refresh)
 
-        logging.debug(f"ADDED CHAIN {chain_id} => midi_chan={chain.midi_chan}, mixer_chan={chain.mixer_chan}, zmop_index={chain.zmop_index}")
-        #logging.debug(f"ordered_chain_ids = {self.ordered_chain_ids}")
-        #logging.debug(f"midi_chan_2_chain_ids = {self.midi_chan_2_chain_ids}")
+        logging.debug(
+            f"ADDED CHAIN {chain_id} => midi_chan={chain.midi_chan}, mixer_chan={chain.mixer_chan}, zmop_index={chain.zmop_index}")
+        # logging.debug(f"ordered_chain_ids = {self.ordered_chain_ids}")
+        # logging.debug(f"midi_chan_2_chain_ids = {self.midi_chan_2_chain_ids}")
 
         self.active_chain_id = chain_id
         self.state_manager.end_busy("add_chain")
@@ -273,7 +299,8 @@ class zynthian_chain_manager:
         else:
             zmop_index = None
 
-        self.add_chain(chain_id, midi_chan=midi_chan, midi_thru=midi_thru, audio_thru=audio_thru, mixer_chan=mixer_chan, zmop_index=zmop_index, title=title, fast_refresh=False)
+        self.add_chain(chain_id, midi_chan=midi_chan, midi_thru=midi_thru, audio_thru=audio_thru,
+                       mixer_chan=mixer_chan, zmop_index=zmop_index, title=title, fast_refresh=False)
 
         # Set CC route state
         zmop_index = self.chains[chain_id].zmop_index
@@ -296,7 +323,8 @@ class zynthian_chain_manager:
             return False
         self.state_manager.start_busy("remove_chain", "Removing Chain")
         chain_pos = self.get_chain_index(chain_id)
-        chains_to_remove = [chain_id]  # List of associated chains that shold be removed simultaneously
+        # List of associated chains that shold be removed simultaneously
+        chains_to_remove = [chain_id]
         chain = self.chains[chain_id]
         if chain.synth_slots:
             if chain.synth_slots[0][0].eng_code in ["BF", "AE"]:
@@ -309,8 +337,10 @@ class zynthian_chain_manager:
             chain = self.chains[chain_id]
             if isinstance(chain.midi_chan, int):
                 if chain.midi_chan < MAX_NUM_MIDI_CHANS:
-                    self.midi_chan_2_chain_ids[chain.midi_chan].remove(chain_id)
-                    lib_zyncore.ui_send_ccontrol_change(chain.midi_chan, 120, 0)
+                    self.midi_chan_2_chain_ids[chain.midi_chan].remove(
+                        chain_id)
+                    lib_zyncore.ui_send_ccontrol_change(
+                        chain.midi_chan, 120, 0)
                 elif chain.midi_chan == 0xffff:
                     for mc in range(16):
                         self.midi_chan_2_chain_ids[mc].remove(chain_id)
@@ -318,7 +348,8 @@ class zynthian_chain_manager:
 
             if chain.mixer_chan is not None:
                 mute = self.state_manager.zynmixer.get_mute(chain.mixer_chan)
-                self.state_manager.zynmixer.set_mute(chain.mixer_chan, True, True)
+                self.state_manager.zynmixer.set_mute(
+                    chain.mixer_chan, True, True)
 
             for processor in chain.get_processors():
                 self.remove_processor(chain_id, processor, False, False)
@@ -329,12 +360,14 @@ class zynthian_chain_manager:
                     self.state_manager.zynmixer.reset(chain.mixer_chan)
                     self.state_manager.audio_recorder.unarm(chain.mixer_chan)
                 self.chains.pop(chain_id)
-                self.state_manager.zynmixer.set_mute(chain.mixer_chan, False, True)
+                self.state_manager.zynmixer.set_mute(
+                    chain.mixer_chan, False, True)
                 del chain
                 if chain_id in self.ordered_chain_ids:
                     self.ordered_chain_ids.remove(chain_id)
             elif chain.mixer_chan is not None:
-                self.state_manager.zynmixer.set_mute(chain.mixer_chan, mute, True)
+                self.state_manager.zynmixer.set_mute(
+                    chain.mixer_chan, mute, True)
 
         zynautoconnect.request_audio_connect(fast_refresh)
         zynautoconnect.request_midi_connect(fast_refresh)
@@ -358,7 +391,8 @@ class zynthian_chain_manager:
 
         success = True
         for chain in list(self.chains.keys()):
-            success &= self.remove_chain(chain, stop_engines, fast_refresh=False)
+            success &= self.remove_chain(
+                chain, stop_engines, fast_refresh=False)
         return success
 
     def move_chain(self, offset, chain_id=None):
@@ -375,7 +409,8 @@ class zynthian_chain_manager:
             pos = index + offset
             pos = min(pos, len(self.ordered_chain_ids) - 2)
             pos = max(pos, 0)
-            self.ordered_chain_ids.insert(pos, self.ordered_chain_ids.pop(index))
+            self.ordered_chain_ids.insert(
+                pos, self.ordered_chain_ids.pop(index))
             zynsigman.send(zynsigman.S_CHAIN_MAN, self.SS_MOVE_CHAIN)
 
     def get_chain_count(self):
@@ -498,7 +533,7 @@ class zynthian_chain_manager:
 
         if chain_id in self.chains:
             return self.chains[chain_id].audio_routes
-        return{}
+        return {}
 
     def get_chain_midi_inputs(self, chain_id):
         """Get list of MIDI inputs for a chain"""
@@ -554,7 +589,7 @@ class zynthian_chain_manager:
 
         if chain_id in self.chains:
             return self.chains[chain_id].midi_routes
-        return{}
+        return {}
 
     def will_midi_howl(self, src_id, dst_id, node_list=None):
         """Checks if adding a connection will cause a MIDI howl-round loop
@@ -633,7 +668,8 @@ class zynthian_chain_manager:
             chain_id = chain.chain_id
 
         self.active_chain_id = chain_id
-        zynsigman.send_queued(zynsigman.S_CHAIN_MAN, self.SS_SET_ACTIVE_CHAIN, active_chain=self.active_chain_id)
+        zynsigman.send_queued(
+            zynsigman.S_CHAIN_MAN, self.SS_SET_ACTIVE_CHAIN, active_chain=self.active_chain_id)
 
         # If chain receives MIDI, set the active chain in ZynMidiRouter (lib_zyncore)
         if isinstance(chain.zmop_index, int):
@@ -648,7 +684,8 @@ class zynthian_chain_manager:
                         chan = 0
                     for pedal_cc in self.held_zctrls:
                         if self.held_zctrls[pedal_cc][0]:
-                            lib_zyncore.write_zynmidi_ccontrol_change(chan, pedal_cc, 127)
+                            lib_zyncore.write_zynmidi_ccontrol_change(
+                                chan, pedal_cc, 127)
                             # TODO: Check if zctrl gets added to self.held_zctrls
             except Exception as e:
                 logging.error(e)
@@ -679,7 +716,6 @@ class zynthian_chain_manager:
             return self.set_active_chain_by_id(self.ordered_chain_ids[index])
         else:
             return self.set_active_chain_by_id(0)
-
 
     def next_chain(self, nudge=1):
         """Set active the next chain from the ordered list
@@ -737,7 +773,7 @@ class zynthian_chain_manager:
         proc_ids = list(self.processors)
         if proc_ids:
             proc_ids.sort()
-            for x,y in enumerate(proc_ids):
+            for x, y in enumerate(proc_ids):
                 if proc_ids[x-1] + 1 < y:
                     return proc_ids[x-1]+1
             return proc_ids[-1] + 1
@@ -766,20 +802,25 @@ class zynthian_chain_manager:
                 logging.error(f"Engine '{eng_code}' not found!")
             return None
         if proc_id is None:
-            proc_id = self.get_available_processor_id()  # TODO: Derive next available processor id from self.processors
+            # TODO: Derive next available processor id from self.processors
+            proc_id = self.get_available_processor_id()
         elif proc_id in self.processors:
             logging.error(f"Processor '{proc_id}' already exist!")
             return None
 
         if self.state_manager.is_busy():
-            self.state_manager.start_busy("add_processor", None, f"adding {eng_code} to chain {chain_id}")
+            self.state_manager.start_busy(
+                "add_processor", None, f"adding {eng_code} to chain {chain_id}")
         else:
-            self.state_manager.start_busy("add_processor", "Adding Processor", f"adding {eng_code} to chain {chain_id}")
+            self.state_manager.start_busy(
+                "add_processor", "Adding Processor", f"adding {eng_code} to chain {chain_id}")
 
         logging.debug(f"Adding processor '{eng_code}' with ID '{proc_id}'")
-        processor = zynthian_processor(eng_code, self.engine_info[eng_code], proc_id)
+        processor = zynthian_processor(
+            eng_code, self.engine_info[eng_code], proc_id)
         chain = self.chains[chain_id]
-        self.processors[proc_id] = processor  # Add proc early to allow engines to add more as required, e.g. Aeolus
+        # Add proc early to allow engines to add more as required, e.g. Aeolus
+        self.processors[proc_id] = processor
         if chain.insert_processor(processor, parallel, slot):
             if not parallel and not post_fader and processor.type == "Audio Effect":
                 chain.fader_pos += 1
@@ -802,7 +843,8 @@ class zynthian_chain_manager:
                 chain.remove_processor(processor)
                 logging.error(f"Failed to start engine '{eng_code}'!")
         else:
-            logging.error(f"Failed to insert processor '{proc_id}' in chain '{chain_id}', slot '{slot}'!")
+            logging.error(
+                f"Failed to insert processor '{proc_id}' in chain '{chain_id}', slot '{slot}'!")
         # Failed!! => Remove processor from list
         del self.processors[proc_id]
         self.state_manager.end_busy("add_processor")
@@ -842,13 +884,16 @@ class zynthian_chain_manager:
             return False
 
         if not isinstance(processor, zynthian_processor):
-            logging.error(f"Invalid processor instance '{processor}' can't be removed from chain {chain_id}!")
+            logging.error(
+                f"Invalid processor instance '{processor}' can't be removed from chain {chain_id}!")
             return False
 
         if self.state_manager.is_busy():
-            self.state_manager.start_busy("remove_processor", None, f"removing {processor.get_basepath()} from chain {chain_id}")
+            self.state_manager.start_busy(
+                "remove_processor", None, f"removing {processor.get_basepath()} from chain {chain_id}")
         else:
-            self.state_manager.start_busy("remove_processor", "Removing Processor", f"removing {processor.get_basepath()} from chain {chain_id}")
+            self.state_manager.start_busy(
+                "remove_processor", "Removing Processor", f"removing {processor.get_basepath()} from chain {chain_id}")
         for param in processor.controllers_dict:
             self.remove_midi_learn(processor, param)
 
@@ -906,7 +951,6 @@ class zynthian_chain_manager:
             return 0
         return self.chains[chain_id].get_processor_count(type, slot)
 
-
     def get_processor_id(self, processor):
         """Get processor uid from processor object
 
@@ -963,7 +1007,8 @@ class zynthian_chain_manager:
             zynthian_engine_class = info["ENGINE"]
             if eng_code[0:3] == "JV/":
                 eng_key = f"JV/{self.zyngine_counter}"
-                zyngine = zynthian_engine_class(eng_code, self.state_manager, False)
+                zyngine = zynthian_engine_class(
+                    eng_code, self.state_manager, False)
             elif eng_code == "SF":
                 eng_key = f"{eng_code}/{self.zyngine_counter}"
                 zyngine = zynthian_engine_class(self.state_manager)
@@ -986,7 +1031,8 @@ class zynthian_chain_manager:
         for eng_key in list(self.zyngines.keys()):
             if not self.zyngines[eng_key].processors:
                 logging.debug(f"Stopping Unused Engine '{eng_key}' ...")
-                self.state_manager.set_busy_details(f"stopping engine {self.zyngines[eng_key].get_name()}")
+                self.state_manager.set_busy_details(
+                    f"stopping engine {self.zyngines[eng_key].get_name()}")
                 self.zyngines[eng_key].stop()
                 del self.zyngines[eng_key]
 
@@ -995,7 +1041,8 @@ class zynthian_chain_manager:
         for eng_key in list(self.zyngines.keys()):
             if len(self.zyngines[eng_key].processors) == 0 and eng_key[0:3] == "JV/":
                 logging.debug(f"Stopping Unused Jalv Engine '{eng_key}'...")
-                self.state_manager.set_busy_details(f"stopping engine {self.zyngines[eng_key].get_name()}")
+                self.state_manager.set_busy_details(
+                    f"stopping engine {self.zyngines[eng_key].get_name()}")
                 self.zyngines[eng_key].stop()
                 del self.zyngines[eng_key]
 
@@ -1017,7 +1064,8 @@ class zynthian_chain_manager:
                     if (info["ENABLED"] or all) and hide_if_single_proc:
                         result[eng_cat][eng_code] = info
                 else:
-                    logging.error(f"Engine '{eng_code}' has invalid category '{eng_cat}'!")
+                    logging.error(
+                        f"Engine '{eng_code}' has invalid category '{eng_cat}'!")
             # Remove empty categories
             for eng_cat in list(result.keys()):
                 if not result[eng_cat]:
@@ -1034,7 +1082,8 @@ class zynthian_chain_manager:
             # Jack, when listing ports, accepts regular expressions as the jack name.
             # So, for avoiding problems, jack names shouldn't contain regex characters.
             if sanitize:
-                jackname = re.sub("[\_]{2,}", "_", re.sub("[\s\'\*\(\)\[\]]", "_", jackname))
+                jackname = re.sub("[\_]{2,}", "_", re.sub(
+                    "[\s\'\*\(\)\[\]]", "_", jackname))
             names = set()
             for processor in self.get_processors():
                 jn = processor.get_jackname()
@@ -1047,6 +1096,29 @@ class zynthian_chain_manager:
         except Exception as e:
             logging.error(e)
             return f"{jackname}-00"
+
+    def reload_engine_preset_info(self, eng_code):
+        """Reload preset info for an engine
+
+        eng_code : engine code
+        """
+
+        self.state_manager.start_busy("reload_engine_preset_info", "Scanning for banks & presets")
+        if eng_code.startswith("JV/"):
+            try:
+                plugin_uri = self.engine_info[eng_code]['URL']
+                #zynthian_lv2.generate_presets_cache_workaround()
+                zynthian_lv2.generate_plugin_presets_cache(plugin_uri, True)
+            except Exception as e:
+                logging.error(e)
+
+        for proc in self.processors.values():
+            if eng_code and proc.eng_code.startswith(eng_code):
+                try:
+                    proc.engine.load_preset_info()
+                except:
+                    pass
+        self.state_manager.end_busy("reload_engine_preset_info")
 
     # ------------------------------------------------------------------------
     # State Management
@@ -1070,7 +1142,7 @@ class zynthian_chain_manager:
                 "preset_info": processor.preset_info,
                 "controllers": processor.controllers_dict
             }
-        #TODO: Remove superfluous parameters
+        # TODO: Remove superfluous parameters
         return state
 
     def set_state(self, state, engine_config):
@@ -1081,7 +1153,8 @@ class zynthian_chain_manager:
         Returns : True on success
         """
 
-        self.state_manager.start_busy("set_chain_state", None, "loading chains")
+        self.state_manager.start_busy(
+            "set_chain_state", None, "loading chains")
 
         # Clean all chains but don't stop unused engines
         self.remove_all_chains(False)
@@ -1107,7 +1180,8 @@ class zynthian_chain_manager:
                             mode = CHAIN_MODE_PARALLEL
                         else:
                             mode = CHAIN_MODE_SERIES
-                        self.add_processor(chain_id, eng_code, mode, proc_id=int(proc_id), fast_refresh=False, eng_config=eng_config)
+                        self.add_processor(chain_id, eng_code, mode, proc_id=int(
+                            proc_id), fast_refresh=False, eng_config=eng_config)
             if "fader_pos" in chain_state and self.get_slot_count(chain_id, "Audio Effect") > chain_state["fader_pos"]:
                 self.chains[chain_id].fader_pos = chain_state["fader_pos"]
             else:
@@ -1137,7 +1211,8 @@ class zynthian_chain_manager:
         if zctrl is None:
             return
 
-        logging.debug(f"(chan={chan}, midi_cc={midi_cc}, zctrl={zctrl.symbol}, zmip={zmip})")
+        logging.debug(
+            f"(chan={chan}, midi_cc={midi_cc}, zctrl={zctrl.symbol}, zmip={zmip})")
         self.remove_midi_learn(zctrl.processor, zctrl.symbol)
         if zmip is None:
             if zctrl.processor:
@@ -1162,7 +1237,7 @@ class zynthian_chain_manager:
             else:
                 self.absolute_midi_cc_binding[key] = [zctrl]
 
-        #TODO: Handle MD midi learn
+        # TODO: Handle MD midi learn
             """
             #logging.debug(f"ADDING GLOBAL MIDI LEARN => MIDI CHANNEL {chan}, CC#{midi_cc}")
             if zctrl.processor.eng_code == "MD":
@@ -1216,7 +1291,7 @@ class zynthian_chain_manager:
                 return [key, False]
         for key, zctrls in self.chan_midi_cc_binding.items():
             if zctrl in zctrls:
-                return [key, False] #TODO: This isn't right!
+                return [key, False]  # TODO: This isn't right!
 
     def midi_control_change(self, zmip, midi_chan, cc_num, cc_val):
         """Send MIDI CC message to relevant chain
@@ -1246,17 +1321,18 @@ class zynthian_chain_manager:
         # Handle controller feedback from setBfree engine => setBfree sends feedback in channel 0
         # Each engine sending feedback should use a separated zmip, currently only setBfree does.
         if zmip == ZMIP_CTRL_INDEX:
-            #logging.debug(f"MIDI CONTROL FEEDBACK {midi_chan}, {cc_num} => {cc_val}")
+            # logging.debug(f"MIDI CONTROL FEEDBACK {midi_chan}, {cc_num} => {cc_val}")
             try:
                 for proc in zynautoconnect.ctrl_fb_procs:
                     if proc.part_i == midi_chan:
                         key = (proc.chain_id << 16) | (cc_num << 8)
                         zctrls = self.chain_midi_cc_binding[key]
                         for zctrl in zctrls:
-                            #logging.debug(f"CONTROLLER FEEDBACK {zctrl.symbol} ({midi_chan}) => {cc_val}")
+                            # logging.debug(f"CONTROLLER FEEDBACK {zctrl.symbol} ({midi_chan}) => {cc_val}")
                             zctrl.midi_control_change(cc_val, send=False)
             except Exception as e:
-                logging.warning(f"Can't manage control feedback for CH{midi_chan}:CC{cc_num} => {e}")
+                logging.warning(
+                    f"Can't manage control feedback for CH{midi_chan}:CC{cc_num} => {e}")
             return
 
         # Handle absolute CC binding
@@ -1352,7 +1428,8 @@ class zynthian_chain_manager:
                         continue
                     changed |= processor.set_preset(midi_prog, True)
             except Exception as e:
-                logging.error(f"Can't set preset for CH#{midi_chan}:PC#{midi_prog} => {e}")
+                logging.error(
+                    f"Can't set preset for CH#{midi_chan}:PC#{midi_prog} => {e}")
         return changed
 
     def set_midi_chan(self, chain_id, midi_chan):
@@ -1395,7 +1472,7 @@ class zynthian_chain_manager:
             for mc in midi_chans:
                 try:
                     self.midi_chan_2_chain_ids[mc].append(chain_id)
-                    #logging.debug(f"Adding chain ID {chain_id} to MIDI channel {mc}")
+                    # logging.debug(f"Adding chain ID {chain_id} to MIDI channel {mc}")
                 except:
                     pass
 
@@ -1539,6 +1616,7 @@ class zynthian_chain_manager:
         return state
 
 # -----------------------------------------------------------------------------
+
 
 # Call class method to get engine info into the "engine_info" class variable
 zynthian_chain_manager.get_engine_info()
