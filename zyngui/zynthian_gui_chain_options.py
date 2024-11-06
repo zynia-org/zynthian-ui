@@ -119,6 +119,7 @@ class zynthian_gui_chain_options(zynthian_gui_selector):
                     (self.remove_chain, None, "Remove Chain"))
             else:
                 self.list_data.append((self.remove_cb, None, "Remove..."))
+            self.list_data.append((self.export_chain, None, "Export chain..."))
         elif audio_proc_count > 0:
             self.list_data.append(
                 (self.remove_all_audiofx, None, "Remove all Audio-FX"))
@@ -377,6 +378,13 @@ class zynthian_gui_chain_options(zynthian_gui_selector):
     def do_rename_chain(self, title):
         self.chain.title = title
         self.zyngui.show_screen_reset('audio_mixer')
+
+    def export_chain(self):
+        self.zyngui.show_keyboard(self.do_export_chain, self.chain.title)
+
+    def do_export_chain(self, title):
+        path = f"{self.zyngui.state_manager.snapshot_dir}/{self.zyngui.state_manager.snapshot_bank}/{title}.zss"
+        self.zyngui.state_manager.export_chain(path, self.chain_id)
 
     # Remove submenu
 

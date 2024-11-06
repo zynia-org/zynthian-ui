@@ -988,6 +988,66 @@ class zynthian_state_manager:
 
         return state
 
+    def export_chain(self, fpath, chain_id):
+        """Save just a single chain to a snapshot file
+        
+        fpath: Full filename and path
+        chain_id: Chain to export
+        """
+        self.start_busy("export chain", "exporting chain")
+        try:
+            # Get state
+            state = self.get_state()
+            procs = []
+            for id in list(state["chains"]):
+                if id != chain_id:
+                    del state["chains"][id]
+                else:
+                    for slot in state["chains"][id]["slots"]:
+                        for proc in slot.keys():
+                            procs.append(proc)
+            for zs3 in list(state["zs3"]):
+                if zs3 != "zs3-0":
+                    del state["zs3"][zs3]
+                else:
+                    for proc in list(state["zs3"][zs3]["processors"]):
+                        if proc not in procs:
+                            del state["zs3"][zs3]["processors"][proc]
+                    for id in list(state["zs3"][zs3]["chains"]):
+                        if id != chain_id:
+                            del state["zs3"][zs3]["chains"][id]
+                    for key in ["global", "midi_capture", "midi_learn", "mixer", "active_chain"]:
+                        try:
+                            del state["zs3"][zs3][key]
+                        except:
+                            pass
+
+
+            for key in ["last_snapshot_fpath", "midi_profile_state", "engine_config", "audio_recorder_armed", "zynseq_riff_b64", "alsa_mixer", "zyngui"]:
+                try:
+                    del state[key]
+                except:
+                    pass
+
+            # JSON Encode
+            json = JSONEncoder().encode(state)
+            with open(fpath, "w") as fh:
+                logging.info(f"Saving snapshot {fpath} ...")
+                # logging.debug(f"Snapshot JSON Data =>\n{json}")
+                fh.write(json)
+                fh.flush()
+                os.fsync(fh.fileno())
+        except Exception as e:
+            logging.exception(traceback.format_exc())
+            logging.error("Can't export chain file '%s': %s" % (fpath, e))
+            self.set_busy_error("ERROR saving snapshot", e)
+            sleep(2)
+            self.end_busy("export chain")
+            return False
+
+        self.end_busy("export chain")
+        return True
+
     def save_snapshot(self, fpath, extra_data=None):
         """Save current state model to file
 
