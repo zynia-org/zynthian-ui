@@ -2069,8 +2069,10 @@ class zynthian_gui:
             return True
 
         elif i == 2:
-            self.cuia_screen_zs3()
-            # self.cuia_screen_snapshot()
+            if self.current_screen == 'zs3':
+                self.cuia_screen_snapshot()
+            else:
+                self.cuia_screen_zs3()
             return True
 
         elif i == 3:
