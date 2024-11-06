@@ -1158,12 +1158,20 @@ class zynthian_gui:
         self.state_manager.all_notes_off()
         sleep(0.1)
         self.state_manager.raw_all_notes_off()
+        try:
+            self.screens[self.current_screen].set_title("ALL NOTES OFF", None, None, 1)
+        except:
+            pass
 
     def cuia_all_sounds_off(self, params=None):
         self.state_manager.all_notes_off()
         self.state_manager.all_sounds_off()
         sleep(0.1)
         self.state_manager.raw_all_notes_off()
+        try:
+            self.screens[self.current_screen].set_title("ALL SOUNDS OFF", None, None, 1)
+        except:
+            pass
 
     def cuia_clean_all(self, params=None):
         if params == ['CONFIRM']:
@@ -2061,8 +2069,10 @@ class zynthian_gui:
             return True
 
         elif i == 2:
-            self.cuia_screen_zs3()
-            # self.cuia_screen_snapshot()
+            if self.current_screen == 'zs3':
+                self.cuia_screen_snapshot()
+            else:
+                self.cuia_screen_zs3()
             return True
 
         elif i == 3:
