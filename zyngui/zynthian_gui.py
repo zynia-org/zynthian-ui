@@ -1047,19 +1047,19 @@ class zynthian_gui:
         return self.alt_mode
 
     def clean_all(self):
-        if self.chain_manager.get_chain_count() > 0:
+        if self.chain_manager.get_chain_count() > 1:
             self.state_manager.save_last_state_snapshot()
         self.state_manager.clean_all()
         self.show_screen_reset('main_menu')
 
     def clean_chains(self):
-        if self.chain_manager.get_chain_count() > 0:
+        if self.chain_manager.get_chain_count() > 1:
             self.state_manager.save_last_state_snapshot()
         self.state_manager.clean_chains()
         self.show_screen_reset('main_menu')
 
     def clean_sequences(self):
-        if self.chain_manager.get_chain_count() > 0:
+        if self.chain_manager.get_chain_count() > 1:
             self.state_manager.save_last_state_snapshot()
         self.state_manager.clean_sequences()
         self.show_screen_reset('zynpad')
