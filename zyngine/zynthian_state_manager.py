@@ -1016,7 +1016,7 @@ class zynthian_state_manager:
                     for id in list(state["zs3"][zs3]["chains"]):
                         if id != chain_id:
                             del state["zs3"][zs3]["chains"][id]
-                    for key in ["global", "midi_capture", "midi_learn", "active_chain"]:
+                    for key in ["global", "midi_capture", "active_chain"]:
                         try:
                             del state["zs3"][zs3][key]
                         except:
