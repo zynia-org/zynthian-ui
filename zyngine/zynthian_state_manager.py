@@ -1016,7 +1016,7 @@ class zynthian_state_manager:
                     for id in list(state["zs3"][zs3]["chains"]):
                         if id != chain_id:
                             del state["zs3"][zs3]["chains"][id]
-                    for key in ["global", "midi_capture", "midi_learn", "mixer", "active_chain"]:
+                    for key in ["global", "midi_capture", "midi_learn", "active_chain"]:
                         try:
                             del state["zs3"][zs3][key]
                         except:
@@ -1120,12 +1120,33 @@ class zynthian_state_manager:
                         engine_config = None
 
                     if merge:
-                    # Need to reassign chains and processor ids
-                        chain_map = {}
-                        proc_map = {}
+                        # Remove elements that are not to be merged
+                        for key in ["last_snapshot_fpath", "midi_profile_state", "audio_recorder_armed", "zynseq_riff_b64", "alsa_mixer", "zyngui"]:
+                            try:
+                                del state[key]
+                            except:
+                                pass
+                        # Need to reassign chains and processor ids
+                        chain_map = {} # Map of new chain id indexed by old id
+                        proc_map = {} # Map of new processor id indexed by old id
+                        mixer_map = {} # Map of new mixer chan idx indexed by old idx
+                        # Don't import main chain
+                        try:
+                            del state["chains"]["0"]
+                        except:
+                            pass
+                        new_proc_id = 0
+                        for id in self.chain_manager.processors:
+                            if new_proc_id <= id:
+                                new_proc_id = id + 1
+
+                        mixer_chan = 0
                         for chain_id, chain_state in state["chains"].items():
                             # Fix mixer channel
-                            chain_state["mixer_chan"] = self.chain_manager.get_next_free_midi_chan()
+                            mixer_chan = self.chain_manager.get_next_free_midi_chan(mixer_chan)
+                            mixer_map[int(chain_state["mixer_chan"])] = mixer_chan
+                            chain_state["mixer_chan"] = mixer_chan
+                            mixer_chan += 1
                             new_chain_id = 1
                             while new_chain_id in self.chain_manager.chains:
                                 new_chain_id += 1
@@ -1133,19 +1154,45 @@ class zynthian_state_manager:
                             for slot, procs in enumerate(chain_state["slots"]):
                                 new_procs = {}
                                 for old_proc_id, proc in procs.items():
-                                    proc_id = self.chain_manager.get_available_processor_id()
-                                    new_procs[proc_id] = proc
-                                    proc_map[old_proc_id] = proc_id
+                                    new_procs[new_proc_id] = proc
+                                    proc_map[old_proc_id] = new_proc_id
+                                    new_proc_id += 1
                                 chain_state["slots"][slot] = new_procs
                         # Fix zs3
-                        chains = {}
-                        for chain_id, chain_config in state["zs3"]["zs3-0"]["chains"].items():
-                            chains[chain_map[chain_id]] = chain_config
-                        state["zs3"]["zs3-0"]["chains"] = chains
                         procs = {}
                         for proc_id, proc_config in state["zs3"]["zs3-0"]["processors"].items():
-                            procs[proc_map[proc_id]] = proc_config
+                            if proc_id in proc_map:
+                                procs[proc_map[proc_id]] = proc_config
                         state["zs3"]["zs3-0"]["processors"] = procs
+                        chains = {}
+                        for chain_id, chain_config in state["zs3"]["zs3-0"]["chains"].items():
+                            if chain_id == '0':
+                                continue
+                            chains[chain_map[chain_id]] = chain_config
+
+                            if "midi_cc" in chain_config:
+                                for cc, map in chain_config["midi_cc"].items():
+                                    for ctrl_cfg in map:
+                                        if str(ctrl_cfg[0]) in proc_map:
+                                            ctrl_cfg[0] = proc_map[str(ctrl_cfg[0])]
+                        state["zs3"]["zs3-0"]["chains"] = chains
+                        mixer_chans = {}
+                        for old_mixer_chan, new_mixer_chan in mixer_map.items():
+                            try:
+                                mixer_chans[f"chan_{new_mixer_chan:02d}"] = state["zs3"]["zs3-0"]["mixer"][f"chan_{old_mixer_chan:02d}"]
+                            except:
+                                pass
+                        state["zs3"]["zs3-0"]["mixer"] = mixer_chans
+                        # We don't want to merge MIDI binding to mixer
+                        try:
+                            del state["zs3"]["zs3-0"]["mixer"]["midi_learn"]
+                        except:
+                            pass
+                        # We don't want to merge MIDI capture
+                        try:
+                            del state["zs3"]["zs3-0"]["midi_capture"]
+                        except:
+                            pass
 
                     self.chain_manager.set_state(
                         state['chains'], engine_config, merge)
@@ -1153,20 +1200,9 @@ class zynthian_state_manager:
                 zynautoconnect.resume()
 
                 zs3 = self.sanitize_zs3_from_json(state["zs3"])
-                if merge:
-                    if "chains" in zs3["zs3-0"]:
-                        if "chains" in self.zs3["zs3-0"]:
-                            self.zs3["zs3-0"]["chains"] |= zs3["zs3-0"]["chains"]
-                        else:
-                            self.zs3["zs3-0"]["chains"] = zs3["zs3-0"]["chains"]
-                    if "processors" in zs3["zs3-0"]:
-                        if "processors" in self.zs3["zs3-0"]:
-                            self.zs3["zs3-0"]["processors"] |= zs3["zs3-0"]["processors"]
-                        else:
-                            self.zs3["zs3-0"]["processors"] = zs3["zs3-0"]["processors"]
-                else:
+                if not merge:
                     self.zs3 = zs3
-                self.load_zs3("zs3-0")
+                self.load_zs3(zs3["zs3-0"])
                 try:
                     mute |= self.zs3["zs3-0"]["mixer"]["chan_16"]["mute"]
                 except:
@@ -1330,21 +1366,30 @@ class zynthian_state_manager:
     def load_zs3(self, zs3_id):
         """Restore a ZS3
 
-        zs3_id : ID of ZS3 to restore
+        zs3_id : ID of ZS3 to restore or zs3 dict
         Returns : True on success
         """
 
-        # Try loading exact match
-        try:
-            zs3_state = self.zs3[zs3_id]
-        except:
-            # else ignore MIDI channel => try loading "program change" match
+        if isinstance(zs3_id, str):
+            # Try loading exact match
             try:
-                zs3_id = f"*/{zs3_id.split('/')[1]}"
                 zs3_state = self.zs3[zs3_id]
             except:
-                logging.info(f"Not found ZS3 matching '{zs3_id}'")
-                return False
+                # else ignore MIDI channel => try loading "program change" match
+                try:
+                    zs3_id = f"*/{zs3_id.split('/')[1]}"
+                    zs3_state = self.zs3[zs3_id]
+                except:
+                    logging.info(f"Not found ZS3 matching '{zs3_id}'")
+                    return False
+        else:
+            try:
+                zs3_state = zs3_id
+                zs3_id = self.zs3['last_zs3']
+                if zs3_id is None:
+                    zs3_id = "zs3-0"
+            except:
+                zs3_id = "zs3-0"
 
         restored_chains = []
         restored_cc_mapping = []
