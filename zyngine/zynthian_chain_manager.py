@@ -224,7 +224,12 @@ class zynthian_chain_manager:
             chain.set_mixer_chan(mixer_chan)
         # else, if audio_thru enabled, setup a mixer_chan
         elif audio_thru:
-            chain.set_mixer_chan(self.get_next_free_mixer_chan())
+            try:
+                chain.set_mixer_chan(self.get_next_free_mixer_chan())
+            except Exception as e:
+                logging.warning(e)
+                self.state_manager.end_busy("add_chain")
+                return None
 
         # Setup MIDI routing
         if isinstance(midi_chan, int):
@@ -828,7 +833,11 @@ class zynthian_chain_manager:
                 chain.fader_pos += 1
             # TODO: Fails to detect MIDI only chains in snapshots
             if chain.mixer_chan is None and processor.type != "MIDI Tool":
-                chain.mixer_chan = self.get_next_free_mixer_chan()
+                try:
+                    chain.mixer_chan = self.get_next_free_mixer_chan()
+                except Exception as e:
+                    logging.warning(e)
+                    return None
             engine = self.start_engine(processor, eng_code, eng_config)
             if engine:
                 chain.rebuild_graph()
