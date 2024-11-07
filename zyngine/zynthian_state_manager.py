@@ -1082,7 +1082,7 @@ class zynthian_state_manager:
         self.end_busy("save snapshot")
         return True
 
-    def load_snapshot(self, fpath, load_chains=True, load_sequences=True):
+    def load_snapshot(self, fpath, load_chains=True, load_sequences=True, merge=False):
         """Loads a snapshot from file
 
         fpath : Full path and filename of snapshot file
@@ -1118,12 +1118,54 @@ class zynthian_state_manager:
                         engine_config = state["engine_config"]
                     else:
                         engine_config = None
+
+                    if merge:
+                    # Need to reassign chains and processor ids
+                        chain_map = {}
+                        proc_map = {}
+                        for chain_id, chain_state in state["chains"].items():
+                            # Fix mixer channel
+                            chain_state["mixer_chan"] = self.chain_manager.get_next_free_midi_chan()
+                            new_chain_id = 1
+                            while new_chain_id in self.chain_manager.chains:
+                                new_chain_id += 1
+                            chain_map[chain_id] = new_chain_id
+                            for slot, procs in enumerate(chain_state["slots"]):
+                                new_procs = {}
+                                for old_proc_id, proc in procs.items():
+                                    proc_id = self.chain_manager.get_available_processor_id()
+                                    new_procs[proc_id] = proc
+                                    proc_map[old_proc_id] = proc_id
+                                chain_state["slots"][slot] = new_procs
+                        # Fix zs3
+                        chains = {}
+                        for chain_id, chain_config in state["zs3"]["zs3-0"]["chains"].items():
+                            chains[chain_map[chain_id]] = chain_config
+                        state["zs3"]["zs3-0"]["chains"] = chains
+                        procs = {}
+                        for proc_id, proc_config in state["zs3"]["zs3-0"]["processors"].items():
+                            procs[proc_map[proc_id]] = proc_config
+                        state["zs3"]["zs3-0"]["processors"] = procs
+
                     self.chain_manager.set_state(
-                        state['chains'], engine_config)
+                        state['chains'], engine_config, merge)
                 self.chain_manager.stop_unused_engines()
                 zynautoconnect.resume()
 
-                self.zs3 = self.sanitize_zs3_from_json(state["zs3"])
+                zs3 = self.sanitize_zs3_from_json(state["zs3"])
+                if merge:
+                    if "chains" in zs3["zs3-0"]:
+                        if "chains" in self.zs3["zs3-0"]:
+                            self.zs3["zs3-0"]["chains"] |= zs3["zs3-0"]["chains"]
+                        else:
+                            self.zs3["zs3-0"]["chains"] = zs3["zs3-0"]["chains"]
+                    if "processors" in zs3["zs3-0"]:
+                        if "processors" in self.zs3["zs3-0"]:
+                            self.zs3["zs3-0"]["processors"] |= zs3["zs3-0"]["processors"]
+                        else:
+                            self.zs3["zs3-0"]["processors"] = zs3["zs3-0"]["processors"]
+                else:
+                    self.zs3 = zs3
                 self.load_zs3("zs3-0")
                 try:
                     mute |= self.zs3["zs3-0"]["mixer"]["chan_16"]["mute"]

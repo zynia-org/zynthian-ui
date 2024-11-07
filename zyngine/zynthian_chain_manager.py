@@ -196,6 +196,7 @@ class zynthian_chain_manager:
             chain_id = 1
             while chain_id in self.chains:
                 chain_id += 1
+        chain_id = int(chain_id)
 
         # If Main chain ...
         if chain_id == 0:  # main
@@ -208,7 +209,7 @@ class zynthian_chain_manager:
             self.chains[chain_id].midi_thru = midi_thru
             self.chains[chain_id].audio_thru = audio_thru
             self.state_manager.end_busy("add_chain")
-            return self.chains[chain_id]
+            return chain_id
 
         # Create chain instance
         chain = zynthian_chain(chain_id, midi_chan, midi_thru, audio_thru)
@@ -299,7 +300,7 @@ class zynthian_chain_manager:
         else:
             zmop_index = None
 
-        self.add_chain(chain_id, midi_chan=midi_chan, midi_thru=midi_thru, audio_thru=audio_thru,
+        chain_id = self.add_chain(chain_id, midi_chan=midi_chan, midi_thru=midi_thru, audio_thru=audio_thru,
                        mixer_chan=mixer_chan, zmop_index=zmop_index, title=title, fast_refresh=False)
 
         # Set CC route state
@@ -309,6 +310,7 @@ class zynthian_chain_manager:
             for ccnum, ccr in enumerate(chain_state['cc_route']):
                 cc_route_ct[ccnum] = ccr
             lib_zyncore.zmop_set_cc_route(zmop_index, cc_route_ct)
+        return chain_id
 
     def remove_chain(self, chain_id, stop_engines=True, fast_refresh=True):
         """Removes a chain or resets main chain
@@ -1145,7 +1147,7 @@ class zynthian_chain_manager:
         # TODO: Remove superfluous parameters
         return state
 
-    def set_state(self, state, engine_config):
+    def set_state(self, state, engine_config, merge=False):
         """Create chains from state
 
         state : List of chain states
@@ -1157,15 +1159,17 @@ class zynthian_chain_manager:
             "set_chain_state", None, "loading chains")
 
         # Clean all chains but don't stop unused engines
-        self.remove_all_chains(False)
+        if not merge:
+            self.remove_all_chains(False)
 
-        # Reusing Jalv engine instances raise problems (audio routing & jack names, etc..),
-        # so we stop Jalv engines!
-        self.stop_unused_jalv_engines()  # TODO: Can we factor this out? => Not yet!!
+            # Reusing Jalv engine instances raise problems (audio routing & jack names, etc..),
+            # so we stop Jalv engines!
+            self.stop_unused_jalv_engines()  # TODO: Can we factor this out? => Not yet!!
 
         for chain_id, chain_state in state.items():
-            chain_id = int(chain_id)
-            self.add_chain_from_state(chain_id, chain_state)
+            if merge:
+                chain_id = None
+            chain_id = self.add_chain_from_state(chain_id, chain_state)
             if "slots" in chain_state:
                 for slot_state in chain_state["slots"]:
                     # slot_state is a dict of proc_id:proc_type for procs in this slot

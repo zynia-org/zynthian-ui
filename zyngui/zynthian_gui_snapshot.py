@@ -295,6 +295,7 @@ class zynthian_gui_snapshot(zynthian_gui_selector):
             "Load": fpath,
             "Load Chains": fpath,
             "Load Sequences": fpath,
+            "Merge": fpath,
             "Save": fname
         }
         budir = dirname(fpath) + "/.backup"
@@ -326,6 +327,8 @@ class zynthian_gui_snapshot(zynthian_gui_selector):
         elif option == "Load Sequences":
             # self.zyngui.show_confirm("Loading sequences from '%s' will destroy current sequences..." % (fname), self.load_snapshot_sequences, fpath)
             self.load_snapshot_sequences(fpath)
+        elif option == "Merge":
+            self.merge_snapshot(fpath)
         elif option == "Save":
             # self.zyngui.show_confirm("Do you really want to overwrite '%s'?" % (fname), self.save_snapshot, fpath)
             self.save_snapshot(fpath)
@@ -358,6 +361,11 @@ class zynthian_gui_snapshot(zynthian_gui_selector):
     def load_snapshot_chains(self, fpath):
         self.sm.save_last_state_snapshot()
         self.sm.load_snapshot(fpath, load_sequences=False)
+        self.zyngui.show_screen('audio_mixer', self.zyngui.SCREEN_HMODE_RESET)
+
+    def merge_snapshot(self, fpath):
+        self.sm.save_last_state_snapshot()
+        self.sm.load_snapshot(fpath, load_sequences=False, merge=True)
         self.zyngui.show_screen('audio_mixer', self.zyngui.SCREEN_HMODE_RESET)
 
     def load_snapshot_sequences(self, fpath):
