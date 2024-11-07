@@ -120,7 +120,7 @@ class zynthian_gui_chain_options(zynthian_gui_selector):
                     (self.remove_chain, None, "Remove Chain"))
             else:
                 self.list_data.append((self.remove_cb, None, "Remove..."))
-            self.list_data.append((self.export_chain, None, "Export chain..."))
+            self.list_data.append((self.export_chain, None, "Export chain as snapshot..."))
         elif audio_proc_count > 0:
             self.list_data.append(
                 (self.remove_all_audiofx, None, "Remove all Audio-FX"))

@@ -293,9 +293,9 @@ class zynthian_gui_snapshot(zynthian_gui_selector):
         fname = self.list_data[i][2]
         options = {
             "Load": fpath,
-            "Load Chains": fpath,
-            "Load Sequences": fpath,
-            "Merge": fpath,
+            "Load Replace Chains": fpath,
+            "Load Merge Chains": fpath,
+            "Load Replace Sequences": fpath,
             "Save": fname
         }
         budir = dirname(fpath) + "/.backup"
@@ -321,14 +321,14 @@ class zynthian_gui_snapshot(zynthian_gui_selector):
         if option == "Load":
             # self.zyngui.show_confirm("Loading '%s' will destroy current chains & sequences..." % (fname), self.load_snapshot, fpath)
             self.load_snapshot(fpath)
-        elif option == "Load Chains":
+        elif option == "Load Replace Chains":
             # self.zyngui.show_confirm("Loading chains from '%s' will destroy current chains..." % (fname), self.load_snapshot_chains, fpath)
             self.load_snapshot_chains(fpath)
-        elif option == "Load Sequences":
+        elif option == "Load Merge Chains":
+            self.merge_snapshot(fpath)
+        elif option == "Load Replace Sequences":
             # self.zyngui.show_confirm("Loading sequences from '%s' will destroy current sequences..." % (fname), self.load_snapshot_sequences, fpath)
             self.load_snapshot_sequences(fpath)
-        elif option == "Merge":
-            self.merge_snapshot(fpath)
         elif option == "Save":
             # self.zyngui.show_confirm("Do you really want to overwrite '%s'?" % (fname), self.save_snapshot, fpath)
             self.save_snapshot(fpath)

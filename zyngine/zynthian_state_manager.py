@@ -1144,7 +1144,7 @@ class zynthian_state_manager:
                         mixer_chan = 0
                         for chain_id, chain_state in state["chains"].items():
                             # Fix mixer channel
-                            mixer_chan = self.chain_manager.get_next_free_midi_chan(mixer_chan)
+                            mixer_chan = self.chain_manager.get_next_free_mixer_chan(mixer_chan)
                             mixer_map[int(chain_state["mixer_chan"])] = mixer_chan
                             chain_state["mixer_chan"] = mixer_chan
                             mixer_chan += 1
