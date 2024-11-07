@@ -385,7 +385,7 @@ class zynthian_gui_chain_options(zynthian_gui_selector):
         dirs = os.listdir(self.zyngui.state_manager.snapshot_dir)
         dirs.sort()
         for dir in dirs:
-            if dir.startswith("."):
+            if dir.startswith(".") or not os.path.isdir(f"{self.zyngui.state_manager.snapshot_dir}/{dir}"):
                 continue
             options[dir] = dir
         self.zyngui.screens['option'].config(
