@@ -491,7 +491,7 @@ class zynthian_gui_snapshot(zynthian_gui_selector):
             self.update_list()
         except Exception as e:
             logging.error(e)
-        self.zyngui.close_screen()
+        #self.zyngui.close_screen()
 
     def get_midi_number(self, f):
         try:

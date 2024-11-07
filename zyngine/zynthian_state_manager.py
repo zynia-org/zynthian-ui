@@ -1010,9 +1010,10 @@ class zynthian_state_manager:
                 if zs3 != "zs3-0":
                     del state["zs3"][zs3]
                 else:
-                    for proc in list(state["zs3"][zs3]["processors"]):
-                        if proc not in procs:
-                            del state["zs3"][zs3]["processors"][proc]
+                    if "processors" in state["zs3"][zs3]:
+                        for proc in list(state["zs3"][zs3]["processors"]):
+                            if proc not in procs:
+                                del state["zs3"][zs3]["processors"][proc]
                     for id in list(state["zs3"][zs3]["chains"]):
                         if id != chain_id:
                             del state["zs3"][zs3]["chains"][id]

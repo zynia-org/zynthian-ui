@@ -24,6 +24,7 @@
 # ******************************************************************************
 
 import logging
+import os
 
 # Zynthian specific modules
 from zyngui import zynthian_gui_config
@@ -380,10 +381,29 @@ class zynthian_gui_chain_options(zynthian_gui_selector):
         self.zyngui.show_screen_reset('audio_mixer')
 
     def export_chain(self):
-        self.zyngui.show_keyboard(self.do_export_chain, self.chain.title)
+        options = {}
+        dirs = os.listdir(self.zyngui.state_manager.snapshot_dir)
+        dirs.sort()
+        for dir in dirs:
+            if dir.startswith("."):
+                continue
+            options[dir] = dir
+        self.zyngui.screens['option'].config(
+            "Select location for export", options, self.name_export)
+        self.zyngui.show_screen('option')
 
-    def do_export_chain(self, title):
-        path = f"{self.zyngui.state_manager.snapshot_dir}/{self.zyngui.state_manager.snapshot_bank}/{title}.zss"
+    def name_export(self, param1, param2):
+        self.export_dir = param1
+        self.zyngui.show_keyboard(self.confirm_export_chain, self.chain.get_title())
+
+    def confirm_export_chain(self, title):
+        path = f"{self.zyngui.state_manager.snapshot_dir}/{self.export_dir}/{title}.zss"
+        if os.path.isfile(path):
+            self.zyngui.show_confirm(f"File {path} already exists.\n\nOverwrite?", self.do_export_chain, path)
+        else:
+            self.do_export_chain(path)
+
+    def do_export_chain(self, path):
         self.zyngui.state_manager.export_chain(path, self.chain_id)
 
     # Remove submenu
