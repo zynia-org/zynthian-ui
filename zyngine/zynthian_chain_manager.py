@@ -1574,12 +1574,19 @@ class zynthian_chain_manager:
     def get_synth_processor(self, midi_chan):
         """Get a synth processor on MIDI channel
            If several synth chains in the same MIDI channel, take the first one.
+           if not synth processors, try other processor types.
 
         chan : MIDI channel
         Returns : Processor or None on failure
         """
+        # Try to find a Synth processor in the specified MIDI channel ...
         for chain_id in self.midi_chan_2_chain_ids[midi_chan]:
             processors = self.get_processors(chain_id, "MIDI Synth")
+            if len(processors) > 0:
+                return processors[0]
+        # If not synth processors, try other processor types...
+        for chain_id in self.midi_chan_2_chain_ids[midi_chan]:
+            processors = self.get_processors(chain_id)
             if len(processors) > 0:
                 return processors[0]
         return None
@@ -1587,6 +1594,7 @@ class zynthian_chain_manager:
     def get_synth_preset_name(self, midi_chan):
         """Get the preset name for a synth on MIDI channel
            If several synth chains in the same MIDI channel, take the first one.
+           if not synth processors, try other processor types.
 
         chan : MIDI channel
         Returns : Preset name or None on failure
