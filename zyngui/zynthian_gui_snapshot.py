@@ -46,8 +46,12 @@ class zynthian_gui_snapshot(zynthian_gui_selector):
         self.index_offset = 0
         super().__init__('Bank', True)
         self.sm = self.zyngui.state_manager
+        self.cm = self.zyngui.chain_manager
 
         self.check_bankless_mode()
+
+    def is_not_empty_snapshot(self):
+        return self.cm.get_chain_count() > 1 or self.cm.get_processor_count() > 0
 
     def get_snapshot_fpath(self, f):
         if f in ["last_state.zss", "default.zss"]:
@@ -176,30 +180,29 @@ class zynthian_gui_snapshot(zynthian_gui_selector):
             self.list_data.append((self.sm.snapshot_dir, i, ".."))
             i += 1
 
-        if self.zyngui.chain_manager.get_chain_count() or self.zyngui.chain_manager.get_processor_count() > 0:
+        if self.is_not_empty_snapshot():
             # TODO: Add better validation of populated state, e.g. sequences
             self.list_data.append(("SAVE", i, "Save as new snapshot"))
         if self.bankless_mode:
             self.list_data.append(("NEW_BANK", i, "New Bank"))
-            i = i + 1
+            i += 1
             self.list_data.append((None, None, "> Saved snapshots:"))
             if isfile(self.sm.default_snapshot_fpath):
-                self.list_data.append(
-                    (self.sm.default_snapshot_fpath, i, "Default"))
+                self.list_data.append((self.sm.default_snapshot_fpath, i, "Default"))
                 i += 1
             if isfile(self.sm.last_state_snapshot_fpath):
-                self.list_data.append(
-                    (self.sm.last_state_snapshot_fpath, i, "Last State"))
+                self.list_data.append((self.sm.last_state_snapshot_fpath, i, "Last State"))
                 i += 1
 
         self.change_index_offset(i)
 
         for fpath in sorted(glob(f"{self.sm.snapshot_dir}/{self.sm.snapshot_bank}/*.zss")):
             if isfile(fpath):
-                title = basename(fpath)[:-4].replace(';',
-                                                     '>', 1).replace(';', '/')
+                title = basename(fpath)[:-4].replace(';', '>', 1).replace(';', '/')
                 self.list_data.append((fpath, i, title))
                 i += 1
+                if fpath == self.sm.last_snapshot_fpath:
+                    self.index = i + 1
 
     def fill_list(self):
         self.check_bankless_mode()
@@ -346,7 +349,8 @@ class zynthian_gui_snapshot(zynthian_gui_selector):
                 "Do you really want to delete '%s'" % fname, self.delete_confirmed, fpath)
 
     def load_snapshot(self, fpath):
-        self.sm.save_last_state_snapshot()
+        if self.is_not_empty_snapshot():
+            self.sm.save_last_state_snapshot()
         state = self.sm.load_snapshot(fpath)
         if state is None:
             self.zyngui.clean_all()
@@ -356,12 +360,14 @@ class zynthian_gui_snapshot(zynthian_gui_selector):
         self.zyngui.show_screen('audio_mixer', self.zyngui.SCREEN_HMODE_RESET)
 
     def load_snapshot_chains(self, fpath):
-        self.sm.save_last_state_snapshot()
+        if self.is_not_empty_snapshot():
+            self.sm.save_last_state_snapshot()
         self.sm.load_snapshot(fpath, load_sequences=False)
         self.zyngui.show_screen('audio_mixer', self.zyngui.SCREEN_HMODE_RESET)
 
     def load_snapshot_sequences(self, fpath):
-        self.sm.save_last_state_snapshot()
+        if self.is_not_empty_snapshot():
+            self.sm.save_last_state_snapshot()
         self.sm.load_snapshot(fpath, load_chains=False)
         self.zyngui.show_screen('zynpad', hmode=self.zyngui.SCREEN_HMODE_RESET)
 
