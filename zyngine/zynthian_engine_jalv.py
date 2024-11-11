@@ -33,6 +33,7 @@ from subprocess import check_output, STDOUT
 from . import zynthian_lv2
 from . import zynthian_engine
 from . import zynthian_controller
+from zyncoder.zyncore import lib_zyncore
 
 # ------------------------------------------------------------------------------
 # Jalv Engine Class => Engine for LV2 plugins
@@ -275,10 +276,11 @@ class zynthian_engine_jalv(zynthian_engine):
 
     def set_midi_chan(self, processor):
         if self.plugin_name == "Triceratops":
-            self.lv2_zctrl_dict["midi_channel"].set_value(
-                processor.midi_chan+1.5)
+            self.lv2_zctrl_dict["midi_channel"].set_value(processor.midi_chan + 1.5)
         elif self.plugin_name.startswith("SO-"):
             self.lv2_zctrl_dict["channel"].set_value(processor.midi_chan)
+        elif self.plugin_name in ("Osirus", "OsTIrus"):
+            lib_zyncore.zmop_set_midi_chan_trans(processor.chain.zmop_index, processor.get_midi_chan(), 0)
 
     # ----------------------------------------------------------------------------
     # Bank Managament
