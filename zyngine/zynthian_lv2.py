@@ -621,7 +621,7 @@ def _generate_plugin_presets_cache(plugin):
     for bank in banks:
         label = world.get(bank, world.ns.rdfs.label, None)
         if label is None:
-            label = bank.split('#')[-1]
+            label = str(bank).split('#')[-1]
             logging.debug(f"Bank <{bank}> has no label! Using '{label}'")
 
         banks_dict[str(bank)] = str(label)
