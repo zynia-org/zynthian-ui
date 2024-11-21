@@ -354,7 +354,7 @@ class zynthian_engine_sooperlooper(zynthian_engine):
 			['substitute', {'value': 0, 'value_max': 1, 'labels': ['off', 'on'], 'is_toggle': True}, 106],
 			['insert', {'value': 0, 'value_max': 1, 'labels': ['off', 'on'], 'is_toggle': True}, 107],
 			['undo/redo', {'value': 1, 'labels': ['<', '<>', '>']}],
-			['prev/next', {'value': 1, 'labels': ['<', '<>', '>']}],
+			['prev/next', {'value': 63, 'value_max': 127, 'labels': ['<', '<>', '>']}],
 			['trigger', {'value': 0, 'value_max': 1, 'labels': ['off', 'on'], 'is_toggle': True}, 108],
 			['mute', {'value': 0, 'value_max': 1, 'labels': ['off', 'on'], 'is_toggle': True}, 109],
 			['oneshot', {'value': 0, 'value_max': 1, 'labels': ['off', 'on'], 'is_toggle': True}, 110],
@@ -617,11 +617,11 @@ class zynthian_engine_sooperlooper(zynthian_engine):
 			zctrl.set_value(1, False)
 		elif zctrl.symbol == 'prev/next':
 			# Use single controller to perform prev(CCW) and next (CW)
-			if zctrl.value == 0:
+			if zctrl.value  < 63:
 				self.select_loop(self.selected_loop - 1, True)
-			elif zctrl.value == 2:
+			elif zctrl.value  > 63:
 				self.select_loop(self.selected_loop + 1, True)
-			zctrl.set_value(1, False)
+			zctrl.set_value(63, False)
 		elif zctrl.symbol == 'loop_count':
 			for loop in range(self.loop_count, zctrl.value):
 				self.osc_server.send(self.osc_target, '/loop_add', ('i', self.channels), ('f', 30), ('i', 0))
