@@ -324,8 +324,12 @@ def generate_engines_config_file(refresh=True, reset_rankings=None):
 	global engines, engines_mtime
 	genengines = {}
 
+	logging.error("##############################")
+
+
 	hash = hashlib.new('sha1')
 	start = int(round(time.time()))
+
 	try:
 		if refresh:
 			init_lilv()

@@ -27,6 +27,7 @@ import os
 import tkinter
 import logging
 from random import randrange
+import pprint
 
 # Zynthian specific modules
 from zyngine import *
@@ -227,6 +228,13 @@ class zynthian_gui_engine(zynthian_gui_selector):
 		self.proc_type = self.zyngui.modify_chain_status["type"]
 		self.engines_by_cat = self.chain_manager.filtered_engines_by_cat(self.proc_type, all=self.show_all)
 		self.engine_cats = list(self.engines_by_cat.keys())
+		logging.error("\n************************************************************************")
+		xyzzy = pprint.PrettyPrinter(depth=6).pformat(self.engines_by_cat)
+		logging.error(f"\n{xyzzy}")
+		logging.error("\n^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^")
+		xyzzy = pprint.PrettyPrinter(depth=6).pformat(self.engine_cats)
+		logging.error(f"\n{xyzzy}")
+		logging.error(f"\n{self.proc_type} --- {self.show_all}")
 		logging.debug(f"CATEGORIES => {self.engine_cats}")
 		#self.engines_by_cat = sorted(self.engines_by_cat.items(), key=lambda kv: "!" if kv[0] is None else kv[0])
 
